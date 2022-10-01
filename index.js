@@ -88,7 +88,7 @@ function getDataBaseDump() {
 
 // Some testing 
 try {
-    const { stdout, stderr } = await execPromise('eval `ssh-agent -s` && ssh-add && ');
+    const { stdout, stderr } = await execPromise('eval `ssh-agent -s` && ssh-add');
     console.log('stdout:', stdout);
     // await execPromise('ssh-add');
 
