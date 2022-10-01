@@ -43,7 +43,9 @@ let siteConfig = config.sites[siteDomain];
 
 // Check config 
 if (siteConfig == undefined) {
-    throw new Error(`No config found for this domain (${siteDomain})`);
+    let errorMessage = `No config found for this domain (${siteDomain})`;
+    console.log(errorMessage);
+    throw new Error(errorMessage);
 }
 
 // Upgrade config
