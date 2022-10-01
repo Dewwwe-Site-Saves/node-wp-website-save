@@ -88,7 +88,7 @@ function getDataBaseDump() {
 
 // Some testing 
 try {
-    const { stdout, stderr } = await execPromise('eval `ssh-agent -s` && ssh-add');
+    const { stdout, stderr } = await execPromise('eval `ssh-agent -s` && ssh-add && ');
     console.log('stdout:', stdout);
     // await execPromise('ssh-add');
 
@@ -105,7 +105,7 @@ let pullError = false;
 if (mySiteFolderExists) {
     console.log('Pulling ' + siteConfig.repo + '...');
     try {
-        const { stdout, stderr } = execProcess('cd "' + config.localSitePath + '" && git pull');
+        const { stdout, stderr } = execProcess('eval `ssh-agent -s` && ssh-add && cd "' + config.localSitePath + '" && git pull');
     } catch (error) {
         console.error(error);
         pullError = true;
@@ -119,7 +119,7 @@ if (mySiteFolderExists && pullError) {
 if (!mySiteFolderExists || pullError) {
     console.log('Cloning ' + siteConfig.repo + '...');
     try {
-        const { stdout, stderr } = await execPromise('cd "' + config.filesPath + '" && git clone ' + siteConfig.repoUrl);
+        const { stdout, stderr } = await execPromise('eval `ssh-agent -s` && ssh-add && cd "' + config.filesPath + '" && git clone ' + siteConfig.repoUrl);
     } catch (error) {
         console.log(error);
     }
@@ -162,7 +162,7 @@ try {
     const cdCmd = "cd " + +'"' + config.localSitePath + '"';
     const commitCmd = " && git commit -m 'Auto commit " + dateString + "'";
     const pushCmd = " && git push";
-    const { stdout, stderr } = await execPromise(cdCmd + commitCmd + pushCmd);
+    const { stdout, stderr } = await execPromise('eval `ssh-agent -s` && ssh-add && ' + cdCmd + commitCmd + pushCmd);
 } catch (error) {
     console.log(error);
 }
