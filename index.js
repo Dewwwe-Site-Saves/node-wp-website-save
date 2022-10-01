@@ -86,6 +86,16 @@ function getDataBaseDump() {
  *       Exec           *
  ************************/
 
+// Some testing 
+try {
+    const { stdout, stderr } = await execPromise('eval `ssh-agent -s`');
+    console.log('stdout:', stdout);
+    await execPromise('ssh-add');
+
+} catch (error) {
+    console.log(error);
+}
+
 // Cleanup files (make sure /files/mysite/ exists)
 let clean = new Cleanup(__dirname, siteConfig.repo);
 let mySiteFolderExists = clean.setupFiles(); // Ensure the exitence of /files/ and /files/repo/.git if /files/repo/ exists
@@ -139,10 +149,10 @@ await connection.download();
 // Git commit & push
 console.log('Commiting & pushing ' + siteConfig.repo + '...');
 const date = new Date();
-const mm = this.getMonth() + 1; // getMonth() is zero-based
-const dd = this.getDate();
+const mm = date.getMonth() + 1; // getMonth() is zero-based
+const dd = date.getDate();
 
-const dateString = [this.getFullYear(),
+const dateString = [date.getFullYear(),
     (mm > 9 ? '' : '0') + mm,
     (dd > 9 ? '' : '0') + dd
 ].join('');
