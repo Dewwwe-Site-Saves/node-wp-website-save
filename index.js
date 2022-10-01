@@ -5,8 +5,8 @@
  ************************/
 
 let siteDomain;
-if (process.argv[0] != undefined) {
-    siteDomain = process.argv[0];
+if (process.argv[2] != undefined) {
+    siteDomain = process.argv[2];
 } else {
     siteDomain = 'valensi-patrimoine.fr';
 }
