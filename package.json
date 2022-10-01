@@ -4,7 +4,8 @@
     "description": "Save a WordPress website to github",
     "main": "index.js",
     "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "save": "node index.js"
     },
     "repository": {
         "type": "git",
@@ -26,7 +27,16 @@
     },
     "homepage": "https://github.com/Lou-i3/node-wp-website-save#readme",
     "dependencies": {
+        "axios": "^0.27.2",
         "basic-ftp": "^5.0.2",
-        "fs": "^0.0.1-security"
-    }
+        "child_process": "^1.0.2",
+        "del-cli": "^5.0.0",
+        "fs": "^0.0.1-security",
+        "install": "^0.13.0",
+        "mysqldump": "^3.2.0",
+        "npm": "^8.19.2",
+        "rimraf": "^3.0.2",
+        "ssh2-sftp-client": "^9.0.4"
+    },
+    "type": "module"
 }

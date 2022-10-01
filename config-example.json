@@ -1,20 +1,42 @@
 {
     "sites": {
         "mysite.fr": {
-            "path": "wwww",
-            "host": "ftp.mysite.com",
-            "user": "ftp-user",
-            "pass": "ftp-password",
-            "port": 21,
-            "sftp": false
+            "repo": "mysite",
+            "repoUrl": "",
+            "ftp": {
+                "webRootPath": "wwww",
+                "host": "ftp.mysite.com",
+                "user": "ftp-user",
+                "password": "ftp-password",
+                "port": 21,
+                "sftp": false
+            },
+            "db": {
+                "host": "localhost",
+                "user": "root",
+                "password": "root",
+                "port": 3306,
+                "database": "mysite"
+            }
         },
         "second-site.com": {
-            "path": "www",
-            "host": "ftp.second-site.com",
-            "user": "ftp-user",
-            "pass": "ftp-password",
-            "port": 21,
-            "sftp": false
+            "repo": "mysite",
+            "repoUrl": "",
+            "ftp": {
+                "webRootPath": "wwww",
+                "host": "ftp.mysite.com",
+                "user": "ftp-user",
+                "password": "ftp-password",
+                "port": 21,
+                "sftp": false
+            },
+            "db": {
+                "host": "localhost",
+                "user": "root",
+                "password": "root",
+                "port": 3306,
+                "database": "mysite"
+            }
         }
     }
 }
