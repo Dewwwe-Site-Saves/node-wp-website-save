@@ -4,10 +4,11 @@
  *       Variables      *
  ************************/
 
+let siteDomain;
 if (process.argv[0] != undefined) {
-    const siteDomain = process.argv[0];
+    siteDomain = process.argv[0];
 } else {
-    const siteDomain = 'valensi-patrimoine.fr';
+    siteDomain = 'valensi-patrimoine.fr';
 }
 
 /************************
