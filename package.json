@@ -1,32 +1,32 @@
 {
-  "name": "wp-website-save",
-  "version": "1.0.0",
-  "description": "Save a WordPress website to github",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Lou-i3/node-wp-website-save.git"
-  },
-  "keywords": [
-    "node;",
-    "npm;",
-    "javascript;",
-    "save;",
-    "wordpress;",
-    "database;",
-    "github"
-  ],
-  "author": "Lou-i3",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/Lou-i3/node-wp-website-save/issues"
-  },
-  "homepage": "https://github.com/Lou-i3/node-wp-website-save#readme",
-  "dependencies": {
-    "basic-ftp": "^5.0.2",
-    "fs": "^0.0.1-security"
-  }
+    "name": "wp-website-save",
+    "version": "1.0.0",
+    "description": "Save a WordPress website to github",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Lou-i3/node-wp-website-save.git"
+    },
+    "keywords": [
+        "node",
+        "npm",
+        "javascript",
+        "save",
+        "wordpress",
+        "database",
+        "github"
+    ],
+    "author": "Lou-i3",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/Lou-i3/node-wp-website-save/issues"
+    },
+    "homepage": "https://github.com/Lou-i3/node-wp-website-save#readme",
+    "dependencies": {
+        "basic-ftp": "^5.0.2",
+        "fs": "^0.0.1-security"
+    }
 }
