@@ -41,14 +41,17 @@ let config = JSON.parse(rawConfig);
 
 let siteConfig = config.sites[siteDomain];
 
-config.localPath = __dirname;
-config.filesPath = __dirname + '/files/';
-config.localSitePath = __dirname + '/files/' + siteConfig.repo + '/';
-
 // Check config 
 if (siteConfig == undefined) {
     throw new Error(`No config found for this domain (${siteDomain})`);
 }
+
+// Upgrade config
+config.localPath = __dirname;
+config.filesPath = __dirname + '/files/';
+config.localSitePath = __dirname + '/files/' + siteConfig.repo + '/';
+
+
 
 /************************
  *       Function       *
