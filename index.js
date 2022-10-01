@@ -95,7 +95,7 @@ let pullError = false;
 if (mySiteFolderExists) {
     console.log('Pulling ' + siteConfig.repo + '...');
     try {
-        const { stdout, stderr } = execProcess('cd ' + config.localSitePath + ' && git pull');
+        const { stdout, stderr } = execProcess('cd "' + config.localSitePath + '" && git pull');
     } catch (error) {
         console.error(error);
         pullError = true;
@@ -109,7 +109,7 @@ if (mySiteFolderExists && pullError) {
 if (!mySiteFolderExists || pullError) {
     console.log('Cloning ' + siteConfig.repo + '...');
     try {
-        const { stdout, stderr } = await execPromise('cd ' + config.filesPath + ' && git clone ' + siteConfig.repoUrl);
+        const { stdout, stderr } = await execPromise('cd "' + config.filesPath + '" && git clone ' + siteConfig.repoUrl);
     } catch (error) {
         console.log(error);
     }
@@ -149,7 +149,7 @@ const dateString = [this.getFullYear(),
 
 console.log(dateString);
 try {
-    const cdCmd = "cd " + config.localSitePath;
+    const cdCmd = "cd " + +'"' + config.localSitePath + '"';
     const commitCmd = " && git commit -m 'Auto commit " + dateString + "'";
     const pushCmd = " && git push";
     const { stdout, stderr } = await execPromise(cdCmd + commitCmd + pushCmd);
