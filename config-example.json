@@ -1,0 +1,20 @@
+{
+    "sites": {
+        "mysite.fr": {
+            "path": "wwww",
+            "host": "ftp.mysite.com",
+            "user": "ftp-user",
+            "pass": "ftp-password",
+            "port": 21,
+            "sftp": false
+        },
+        "second-site.com": {
+            "path": "www",
+            "host": "ftp.second-site.com",
+            "user": "ftp-user",
+            "pass": "ftp-password",
+            "port": 21,
+            "sftp": false
+        }
+    }
+}

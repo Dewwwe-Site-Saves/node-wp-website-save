@@ -1,0 +1,6 @@
+.DS_Store
+config.txt
+config.json
+files/*
+!files/.gitkeep 
+node_modules
