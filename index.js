@@ -8,7 +8,7 @@ let siteDomain;
 if (process.argv[2] != undefined) {
     siteDomain = process.argv[2];
 } else {
-    siteDomain = 'valensi-patrimoine.fr';
+    siteDomain = 'lbi-3d.fr';
 }
 
 /************************
@@ -59,7 +59,7 @@ config.localSitePath = __dirname + '/files/' + siteConfig.repo + '/';
  *       Function       *
  ************************/
 function ftpConfig() {
-    if (siteConfig.sftp) {
+    if (siteConfig.ftp.sftp) {
         // console.log("Using sftp");
 
         return new Sftp(__dirname, siteConfig);
@@ -132,7 +132,7 @@ await connection.uploadFile(config.localPath + '/helpers/backup-wp.php', 'dewwwe
 
 // GET backup.php file (trigger database dump)
 console.log('Dumping database...');
-axios.get('https://valensi-patrimoine.fr/dewwwe-backup.php');
+axios.get('https://' + siteDomain + '/dewwwe-backup.php');
 
 // Empty folder (exept .git and readme.md)
 clean.cleanupSiteFolder();
@@ -151,10 +151,10 @@ const dateString = [date.getFullYear(),
     (dd > 9 ? '' : '0') + dd
 ].join('-');
 
-console.log(dateString);
+// console.log(dateString);
 try {
     const gitSetupcmd = "git config --local user.email '" + config.github.mail + "' && git config --local user.name 'Auto Site Save'";
-    const cdCmd = " cd " + '"' + config.localSitePath + '"';
+    const cdCmd = " && cd " + '"' + config.localSitePath + '"';
     const commitCmd = " && git commit -m 'Auto commit " + dateString + "'";
     const pushCmd = " && git push";
     const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitCmd + pushCmd);
