@@ -1,4 +1,8 @@
 {
+    "github": {
+        "user": "myGithubUser",
+        "appPass": "Personal Access Token"
+    },
     "sites": {
         "mysite.fr": {
             "repo": "mysite",
@@ -10,13 +14,6 @@
                 "password": "ftp-password",
                 "port": 21,
                 "sftp": false
-            },
-            "db": {
-                "host": "localhost",
-                "user": "root",
-                "password": "root",
-                "port": 3306,
-                "database": "mysite"
             }
         },
         "second-site.com": {
@@ -29,13 +26,6 @@
                 "password": "ftp-password",
                 "port": 21,
                 "sftp": false
-            },
-            "db": {
-                "host": "localhost",
-                "user": "root",
-                "password": "root",
-                "port": 3306,
-                "database": "mysite"
             }
         }
     }
