@@ -9,7 +9,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/Lou-i3/node-wp-website-save.git"
+        "url": "git+https://github.com/Dewwwe-Site-Saves/node-wp-website-save.git"
     },
     "keywords": [
         "node",
@@ -20,12 +20,12 @@
         "database",
         "github"
     ],
-    "author": "Lou-i3",
+    "author": "Dewwwe Site Saves",
     "license": "MIT",
     "bugs": {
-        "url": "https://github.com/Lou-i3/node-wp-website-save/issues"
+        "url": "https://github.com/Dewwwe-Site-Saves/node-wp-website-save/issues"
     },
-    "homepage": "https://github.com/Lou-i3/node-wp-website-save#readme",
+    "homepage": "https://github.com/Dewwwe-Site-Saves/node-wp-website-save#readme",
     "dependencies": {
         "axios": "^0.27.2",
         "basic-ftp": "^5.0.2",
