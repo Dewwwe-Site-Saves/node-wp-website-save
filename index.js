@@ -121,6 +121,7 @@ if (!mySiteFolderExists || pullError) {
         const { stdout, stderr } = await execPromise('cd "' + config.filesPath + '" && git clone ' + requestUrl);
     } catch (error) {
         console.log(error);
+        throw new Error(error);
     }
 }
 
@@ -164,4 +165,5 @@ try {
     const { stdout, stderr } = await execPromise(cdCmd + commitCmd + pushCmd);
 } catch (error) {
     console.log(error);
+    throw new Error(error);
 }
