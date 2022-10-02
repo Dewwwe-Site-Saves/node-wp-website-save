@@ -157,7 +157,7 @@ try {
     const cdCmd = " && cd " + '"' + config.localSitePath + '"';
     const commitCmd = " && git add . && git commit -m 'Auto commit " + dateString + "'";
     const pushCmd = " && git push";
-    const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitCmd + pushCmd);
+    const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitCmd + pushCmd, { maxBuffer: 1024 * 500000 });
 } catch (error) {
     console.log(error);
     throw new Error(error);
