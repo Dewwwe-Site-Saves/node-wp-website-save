@@ -125,20 +125,14 @@ if (!mySiteFolderExists || pullError) {
     }
 }
 
-// Generate backup.php file
-// let backupFile = "<?php\n";
-// backupFile += `system("mysqldump --host=${siteConfig.db.host} --user=${siteConfig.db.user} --password=${siteConfig.db.password} ${siteConfig.db.database} > db_${siteConfig.db.database}.sql");`
-// backupFile += "\n?>";
-// fs.writeFileSync(config.localSitePath + 'backup.php', backupFile);
-
 // Upload backup.php file
 // Ftp Connect 
 let connection = ftpConfig();
-await connection.uploadFile(config.localPath + '/helpers/backup-wp.php', 'backup.php');
+await connection.uploadFile(config.localPath + '/helpers/backup-wp.php', 'dewwwe-backup.php');
 
 // GET backup.php file (trigger database dump)
 console.log('Dumping database...');
-axios.get('https://valensi-patrimoine.fr/backup.php');
+axios.get('https://valensi-patrimoine.fr/dewwwe-backup.php');
 
 // Empty folder (exept .git and readme.md)
 clean.cleanupSiteFolder();
