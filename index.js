@@ -155,7 +155,7 @@ const dateString = [date.getFullYear(),
 try {
     const gitSetupcmd = 'git config --global user.email "' + config.github.mail + '" && git config --global user.name "Auto Site Save"';
     const cdCmd = " && cd " + '"' + config.localSitePath + '"';
-    const commitCmd = " && git commit -m 'Auto commit " + dateString + "'";
+    const commitCmd = " && git add . && git commit -m 'Auto commit " + dateString + "'";
     const pushCmd = " && git push";
     const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitCmd + pushCmd);
 } catch (error) {
