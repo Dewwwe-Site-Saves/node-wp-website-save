@@ -86,16 +86,6 @@ function getDataBaseDump() {
  *       Exec           *
  ************************/
 
-// Some testing 
-try {
-    const { stdout, stderr } = await execPromise('eval `ssh-agent -s` && ssh-add');
-    console.log('stdout:', stdout);
-    // await execPromise('ssh-add');
-
-} catch (error) {
-    console.log(error);
-}
-
 // Cleanup files (make sure /files/mysite/ exists)
 let clean = new Cleanup(__dirname, siteConfig.repo);
 let mySiteFolderExists = clean.setupFiles(); // Ensure the exitence of /files/ and /files/repo/.git if /files/repo/ exists
@@ -105,7 +95,7 @@ let pullError = false;
 if (mySiteFolderExists) {
     console.log('Pulling ' + siteConfig.repo + '...');
     try {
-        const { stdout, stderr } = execProcess('eval `ssh-agent -s` && ssh-add && cd "' + config.localSitePath + '" && git pull');
+        const { stdout, stderr } = execProcess('cd "' + config.localSitePath + '" && git pull');
     } catch (error) {
         console.error(error);
         pullError = true;
@@ -119,22 +109,31 @@ if (mySiteFolderExists && pullError) {
 if (!mySiteFolderExists || pullError) {
     console.log('Cloning ' + siteConfig.repo + '...');
     try {
-        const { stdout, stderr } = await execPromise('eval `ssh-agent -s` && ssh-add && cd "' + config.filesPath + '" && git clone ' + siteConfig.repoUrl);
+        const repoUrl = siteConfig.repoUrl;
+        let requestUrl;
+        if (repoUrl.indexOf('git@') === 0) {
+            // SSH
+            requestUrl = repoUrl;
+        } else {
+            // HTTPS
+            requestUrl = repoUrl.replace('https://', 'https://:' + config.github.user + ':' + config.github.appPass + '@');
+        }
+        const { stdout, stderr } = await execPromise('cd "' + config.filesPath + '" && git clone ' + requestUrl);
     } catch (error) {
         console.log(error);
     }
 }
 
 // Generate backup.php file
-let backupFile = "<?php\n";
-backupFile += `system("mysqldump --host=${siteConfig.db.host} --user=${siteConfig.db.user} --password=${siteConfig.db.password} ${siteConfig.db.database} > db_${siteConfig.db.database}.sql");`
-backupFile += "\n?>";
-fs.writeFileSync(config.localSitePath + 'backup.php', backupFile);
+// let backupFile = "<?php\n";
+// backupFile += `system("mysqldump --host=${siteConfig.db.host} --user=${siteConfig.db.user} --password=${siteConfig.db.password} ${siteConfig.db.database} > db_${siteConfig.db.database}.sql");`
+// backupFile += "\n?>";
+// fs.writeFileSync(config.localSitePath + 'backup.php', backupFile);
 
 // Upload backup.php file
 // Ftp Connect 
 let connection = ftpConfig();
-await connection.uploadFile(config.localSitePath + 'backup.php', 'backup.php');
+await connection.uploadFile(config.localPath + '/helpers/backup-wp.php', 'backup.php');
 
 // GET backup.php file (trigger database dump)
 console.log('Dumping database...');
@@ -155,14 +154,14 @@ const dd = date.getDate();
 const dateString = [date.getFullYear(),
     (mm > 9 ? '' : '0') + mm,
     (dd > 9 ? '' : '0') + dd
-].join('');
+].join('-');
 
 console.log(dateString);
 try {
-    const cdCmd = "cd " + +'"' + config.localSitePath + '"';
+    const cdCmd = "cd " + '"' + config.localSitePath + '"';
     const commitCmd = " && git commit -m 'Auto commit " + dateString + "'";
     const pushCmd = " && git push";
-    const { stdout, stderr } = await execPromise('eval `ssh-agent -s` && ssh-add && ' + cdCmd + commitCmd + pushCmd);
+    const { stdout, stderr } = await execPromise(cdCmd + commitCmd + pushCmd);
 } catch (error) {
     console.log(error);
 }
