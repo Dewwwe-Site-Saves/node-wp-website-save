@@ -116,7 +116,7 @@ if (!mySiteFolderExists || pullError) {
             requestUrl = repoUrl;
         } else {
             // HTTPS
-            requestUrl = repoUrl.replace('https://', 'https://:' + config.github.user + ':' + config.github.appPass + '@');
+            requestUrl = repoUrl.replace('https://', 'https://' + config.github.user + ':' + config.github.appPass + '@');
         }
         const { stdout, stderr } = await execPromise('cd "' + config.filesPath + '" && git clone ' + requestUrl);
     } catch (error) {
