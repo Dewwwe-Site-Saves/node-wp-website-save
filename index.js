@@ -95,7 +95,7 @@ let pullError = false;
 if (mySiteFolderExists) {
     console.log('Pulling ' + siteConfig.repo + '...');
     try {
-        const { stdout, stderr } = execProcess('cd "' + config.localSitePath + '" && git pull');
+        const { stdout, stderr } = await execPromise('cd "' + config.localSitePath + '" && git pull');
     } catch (error) {
         console.error(error);
         pullError = true;
