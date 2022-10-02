@@ -157,7 +157,7 @@ try {
     const cdCmd = " cd " + '"' + config.localSitePath + '"';
     const commitCmd = " && git commit -m 'Auto commit " + dateString + "'";
     const pushCmd = " && git push";
-    const { stdout, stderr } = await execPromise(cdCmd + commitCmd + pushCmd);
+    const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitCmd + pushCmd);
 } catch (error) {
     console.log(error);
     throw new Error(error);
