@@ -1,0 +1,19 @@
+---
+name: "auto-tagged-release"
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  auto-tagged-release:
+    name: "Auto Tagged Release"
+    runs-on: "ubuntu-latest"
+
+    steps:
+
+      - uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: false
