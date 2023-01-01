@@ -159,7 +159,7 @@ try {
     const commitCmd = " && git add . && git commit -m 'Auto commit " + dateString + "'";
     const tagCmd = " && git tag " + dateString.replace('-','.') ;
     const pushCmd = " && git push";
-    const pushTagCmd = " && git push origin auto-" + dateString;
+    const pushTagCmd = " && git push origin " + dateString;
     const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitCmd + tagCmd + pushCmd + pushTagCmd, { maxBuffer: 1024 * 500000 });
 } catch (error) {
     console.log(error);
