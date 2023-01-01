@@ -141,7 +141,7 @@ clean.cleanupSiteFolder();
 // Download files from ftp
 await connection.download();
 
-// Git commit & push
+// Git commit & push & tag
 console.log('Commiting & pushing ' + siteConfig.repo + '...');
 const date = new Date();
 const mm = date.getMonth() + 1; // getMonth() is zero-based
@@ -157,7 +157,7 @@ try {
     const gitSetupcmd = 'git config --global user.email "' + config.github.mail + '" && git config --global user.name "Auto Site Save" && git config --global http.postBuffer 157286400';
     const cdCmd = " && cd " + '"' + config.localSitePath + '"';
     const commitCmd = " && git add . && git commit -m 'Auto commit " + dateString + "'";
-    const tagCmd = " git tag auto-" + dateString ;
+    const tagCmd = " git tag " + dateString.replace('-','.') ;
     const pushCmd = " && git push";
     const pushTagCmd = " && git push origin auto-" + dateString;
     const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitCmd + tagCmd + pushCmd + pushTagCmd, { maxBuffer: 1024 * 500000 });
