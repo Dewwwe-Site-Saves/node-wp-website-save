@@ -157,8 +157,10 @@ try {
     const gitSetupcmd = 'git config --global user.email "' + config.github.mail + '" && git config --global user.name "Auto Site Save" && git config --global http.postBuffer 157286400';
     const cdCmd = " && cd " + '"' + config.localSitePath + '"';
     const commitCmd = " && git add . && git commit -m 'Auto commit " + dateString + "'";
+    const tagCmd = " git tag auto-" + dateString ;
     const pushCmd = " && git push";
-    const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitCmd + pushCmd, { maxBuffer: 1024 * 500000 });
+    const pushTagCmd = " && git push origin auto-" + dateString;
+    const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitCmd + tagCmd + pushCmd + pushTagCmd, { maxBuffer: 1024 * 500000 });
 } catch (error) {
     console.log(error);
     throw new Error(error);
