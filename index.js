@@ -45,6 +45,7 @@ let siteConfig = config.sites[siteDomain];
 if (siteConfig == undefined) {
     let errorMessage = `No config found for this domain (${siteDomain})`;
     console.log(errorMessage);
+    process.exit();
     throw new Error(errorMessage);
 }
 
