@@ -52,6 +52,9 @@ Config file must be provided for script to work.
 ## Initial Site Save setup
 TBD
 
+## Debug
+In case something fails, you need to delete the files folder corresponding to your site (/files/your-site).
+
 
 ## Futur features
 - [ ] Update README.md of backup with backup date
