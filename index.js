@@ -90,7 +90,6 @@ function getDataBaseDump() {
 // Cleanup files (make sure /files/mysite/ exists)
 let clean = new Cleanup(__dirname, siteConfig.repo);
 let mySiteFolderExists = clean.setupFiles(); // Ensure the exitence of /files/ and /files/repo/.git if /files/repo/ exists
-let mustCommitGitignore = clean.getMustCommitGitignore();
 
 // Git pull / clone
 let pullError = false;
@@ -138,6 +137,8 @@ axios.get('https://' + siteDomain + '/dewwwe-backup.php');
 
 // Empty folder (exept .git and readme.md)
 clean.cleanupSiteFolder();
+let mustCommitGitignore = clean.getMustCommitGitignore();
+
 
 // Download files from ftp
 await connection.download();
