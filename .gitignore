@@ -4,3 +4,4 @@ config.json
 files/*
 !files/.gitkeep 
 node_modules
+.vscode

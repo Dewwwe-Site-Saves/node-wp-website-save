@@ -90,6 +90,7 @@ function getDataBaseDump() {
 // Cleanup files (make sure /files/mysite/ exists)
 let clean = new Cleanup(__dirname, siteConfig.repo);
 let mySiteFolderExists = clean.setupFiles(); // Ensure the exitence of /files/ and /files/repo/.git if /files/repo/ exists
+let mustCommitGitignore = clean.mustCommitGitignore();
 
 // Git pull / clone
 let pullError = false;
@@ -156,11 +157,15 @@ const dateString = [date.getFullYear(),
 try {
     const gitSetupcmd = 'git config --global user.email "' + config.github.mail + '" && git config --global user.name "Auto Site Save" && git config --global http.postBuffer 157286400';
     const cdCmd = " && cd " + '"' + config.localSitePath + '"';
+    let commitGitignore = "";
+    if(mustCommitGitignore) {
+        commitGitignore = " && git add '.gitignore' && git commit -m 'adding gitignore' ";
+    }
     const commitCmd = " && git add . && git commit -m 'Auto commit " + dateString + "'";
     const tagCmd = " && git tag " + dateString.replaceAll('-','.').replaceAll('.0','.') ;
     const pushCmd = " && git push";
     const pushTagCmd = " && git push origin " + dateString.replaceAll('-','.').replaceAll('.0','.');
-    const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitCmd + tagCmd + pushCmd + pushTagCmd, { maxBuffer: 1024 * 500000 });
+    const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitGitignore + commitCmd + tagCmd + pushCmd + pushTagCmd, { maxBuffer: 1024 * 500000 });
 } catch (error) {
     console.log(error);
     throw new Error(error);
