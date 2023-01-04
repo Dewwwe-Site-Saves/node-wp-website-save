@@ -136,8 +136,8 @@ console.log('Dumping database...');
 axios.get('https://' + siteDomain + '/dewwwe-backup.php');
 
 // Empty folder (exept .git and readme.md)
+// let mustCommitGitignore = 
 clean.cleanupSiteFolder();
-let mustCommitGitignore = clean.getMustCommitGitignore();
 
 
 // Download files from ftp
