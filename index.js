@@ -159,6 +159,7 @@ try {
     const gitSetupcmd = 'git config --global user.email "' + config.github.mail + '" && git config --global user.name "Auto Site Save" && git config --global http.postBuffer 157286400';
     const cdCmd = " && cd " + '"' + config.localSitePath + '"';
     let commitGitignore = "";
+    let mustCommitGitignore= false;
     if(mustCommitGitignore) {
         commitGitignore = " && git add '.gitignore' && git commit -m 'adding gitignore' ";
     }
