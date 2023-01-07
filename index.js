@@ -136,8 +136,7 @@ console.log('Dumping database...');
 axios.get('https://' + siteDomain + '/dewwwe-backup.php');
 
 // Empty folder (exept .git and readme.md)
-// let mustCommitGitignore = 
-clean.cleanupSiteFolder();
+let mustCommitGitignore = clean.cleanupSiteFolder();
 
 
 // Download files from ftp
@@ -159,7 +158,6 @@ try {
     const gitSetupcmd = 'git config --global user.email "' + config.github.mail + '" && git config --global user.name "Auto Site Save" && git config --global http.postBuffer 157286400';
     const cdCmd = " && cd " + '"' + config.localSitePath + '"';
     let commitGitignore = "";
-    let mustCommitGitignore= true;
     if(mustCommitGitignore) {
         commitGitignore = " && git add '.gitignore' && git commit -m 'adding gitignore' ";
     }
