@@ -38,3 +38,9 @@ And for each site add the parameter:
 ```
 
 /!\ Make sure your certificates are present in the `sp-certificates` folder!
+
+
+## Resources 
+ - [PnP JS](https://pnp.github.io/pnpjs/)
+ - [PnP JS Authentication](https://github.com/pnp/pnpjs/blob/version-3/docs/getting-started.md#authentication)
+ - [PnP JS List Items](https://pnp.github.io/pnpjs/sp/items/#update-items)
