@@ -12,29 +12,10 @@ npm run save mysite.fr
 
 ## Config 
 Config file must be provided for script to work. 
-```json
-{
-  "github": {
-    "user": "username",
-    "appPass": "password",
-    "mail": "repository",
-  },
-  "sites": {
-    "mysite.fr": {
-            "repo": "name of git repo",
-            "repoUrl": "HTTPS url of git repo (or SHH if you have the certificate setup on your computer)",
-            "ftp": {
-                "webRootPath": "wwww",
-                "host": "ftp.mysite.com",
-                "user": "ftp-user",
-                "password": "ftp-password",
-                "port": 21,
-                "sftp": false
-            }
-        },
-  }
-}
-```
+> See [config file example](./config-example.json)
+
+### Setup SharePoint List update 
+See [setup-sharepoint-updates](./setup-sharepoint-updates.md)
 
 ## Process 
 
@@ -47,7 +28,7 @@ Config file must be provided for script to work.
  - Empty folder (exept .git, readme.md and auto-tagged-release.yml)
  - Download files from ftp
  - Git commit & push & tag
-
+ - Update SharePoint List
 
 ## Initial Site Save setup
 TBD
@@ -56,7 +37,7 @@ TBD
 In case something fails, you need to delete the files folder corresponding to your site (/files/your-site).
 
 
-## Futur features
+## Future features
 - [ ] Update README.md of backup with backup date
 - [ ] Work with sftp (present but not working yet)
 - [ ] Drupal support ?
