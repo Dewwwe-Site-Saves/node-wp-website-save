@@ -17,6 +17,7 @@ if (process.argv[2] != undefined) {
 import fs from 'fs';
 import Sftp from './lib/sftp.js';
 import Ftp from './lib/ftp.js';
+import Sp from './lib/sp.js';
 import Cleanup from './lib/cleanup.js';
 import { exec } from 'child_process';
 import mysqldump from 'mysqldump';
@@ -169,4 +170,10 @@ try {
 } catch (error) {
     console.log(error);
     throw new Error(error);
+}
+
+// Update SharePoint List 
+if (config.sharepoint) {
+    const sp = new Sp(__dirname, config);
+    sp.updateListItem(siteConfig.spListItemID);
 }

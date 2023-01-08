@@ -3,6 +3,15 @@
         "user": "myGithubUser",
         "appPass": "Personal Access Token"
     },
+    "sharepoint": {
+        "tenantID": "{Tenant ID}",
+        "applicationClientID": "{Application (Client) ID}",
+        "certificateThumbprint": "{Certificate Thumbprint (copy from AAD)}",
+        "tenantName": "contoso",
+        "siteName": "MySite",
+        "listName": "MyList",
+        "dateFieldName": "MyDateField"
+    },
     "sites": {
         "mysite.fr": {
             "repo": "mysite",
@@ -14,7 +23,8 @@
                 "password": "ftp-password",
                 "port": 21,
                 "sftp": false
-            }
+            },
+            "spListItemID": "1"
         },
         "second-site.com": {
             "repo": "mysite",
