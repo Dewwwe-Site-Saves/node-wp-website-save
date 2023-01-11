@@ -173,7 +173,7 @@ try {
 }
 
 // Update SharePoint List 
-if (config.sharepoint) {
+if (config.sharepoint && siteConfig.spListItemID) {
     const sp = new Sp(__dirname, config);
     sp.updateListItem(siteConfig.spListItemID);
 }
