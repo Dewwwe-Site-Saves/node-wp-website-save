@@ -149,10 +149,14 @@ console.log('Commiting & pushing ' + siteConfig.repo + '...');
 const date = new Date();
 const mm = date.getMonth() + 1; // getMonth() is zero-based
 const dd = date.getDate();
+const HH = date.getHours();
+const MM = date.getMinutes();
 
-const dateString = [date.getFullYear(),
+const dateString = [date.getFullYear() +
     (mm > 9 ? '' : '0') + mm,
-    (dd > 9 ? '' : '0') + dd
+    (dd > 9 ? '' : '0') + dd,
+    (HH > 9 ? '' : '0') + HH +
+    (MM > 9 ? '' : '0') + MM
 ].join('-');
 
 // console.log(dateString);
