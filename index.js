@@ -134,7 +134,8 @@ await connection.uploadFile(config.localPath + '/helpers/backup-wp.php', 'dewwwe
 
 // GET backup.php file (trigger database dump)
 console.log('Dumping database...');
-axios.get('https://' + siteDomain + '/dewwwe-backup.php');
+let backupMsg = await axios.get('https://' + siteDomain + '/dewwwe-backup.php');
+console.log('Backup message: ', backupMsg)
 
 // Empty folder (exept .git and readme.md)
 let mustCommitGitignore = clean.cleanupSiteFolder();
