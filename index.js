@@ -84,6 +84,10 @@ function getDataBaseDump() {
     });
 }
 
+function delay(time) {
+    return new Promise(resolve => setTimeout(resolve, time));
+  } 
+
 /************************
  *       Exec           *
  ************************/
@@ -136,6 +140,13 @@ await connection.uploadFile(config.localPath + '/helpers/backup-wp.php', 'dewwwe
 console.log('Dumping database...');
 let backupMsg = await axios.get('https://' + siteDomain + '/dewwwe-backup.php');
 console.log('Backup message: ', backupMsg)
+
+// Waiting for db dump to complete 
+const waitMins = 5
+console.log(`Waiting ${waitMins} mins...`);
+const waitMinsMs = waitMins * 60*1000
+await delay(waitMinsMs);
+
 
 // Empty folder (exept .git and readme.md)
 let mustCommitGitignore = clean.cleanupSiteFolder();
