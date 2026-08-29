@@ -15,6 +15,7 @@ if (process.argv[2] != undefined) {
  *       Imports        *
  ************************/
 import fs from 'fs';
+import crypto from 'crypto';
 import Sftp from './lib/sftp.js';
 import Ftp from './lib/ftp.js';
 import Sp from './lib/sp.js';
@@ -127,23 +128,68 @@ if (!mySiteFolderExists || pullError) {
     }
 }
 
-// Upload backup.php file
-// Ftp Connect 
+// Generate a secure token for backup authentication
+const backupToken = crypto.randomBytes(32).toString('hex');
+const tokenFilePath = config.localPath + '/helpers/.dewwwe-backup-token';
+fs.writeFileSync(tokenFilePath, backupToken);
+
+// Upload token file and backup script
 let connection = ftpConfig();
+console.log('Uploading backup token and script...');
+await connection.uploadFile(tokenFilePath, '.dewwwe-backup-token');
 await connection.uploadFile(config.localPath + '/helpers/backup-wp.php', 'dewwwe-backup.php');
 
-// GET backup.php file (trigger database dump)
+// Clean up local token file
+fs.unlinkSync(tokenFilePath);
+
+// Trigger database dump with token authentication
 console.log('Dumping database...');
-let backupMsg = await axios.get('https://' + siteDomain + '/dewwwe-backup.php');
-console.log('Backup message: ', backupMsg)
+let dumpFileName = null;
+try {
+    const backupResponse = await axios.get('https://' + siteDomain + '/dewwwe-backup.php?token=' + backupToken);
+    const backupData = backupResponse.data;
+
+    if (backupData.status !== 'ok' || !backupData.file) {
+        throw new Error('Database dump failed: ' + JSON.stringify(backupData));
+    }
+    dumpFileName = backupData.file;
+    console.log('Database dump successful: ' + dumpFileName);
+} catch (error) {
+    // Clean up remote files in case of failure
+    try { await connection.deleteFile('dewwwe-backup.php'); } catch (e) { /* may have self-deleted */ }
+    try { await connection.deleteFile('.dewwwe-backup-token'); } catch (e) { /* may have been deleted */ }
+    console.error('Database dump failed:', error.message);
+    throw error;
+}
 
 
-// Empty folder (exept .git and readme.md)
+// Empty folder (except .git and readme.md)
 let mustCommitGitignore = clean.cleanupSiteFolder();
 
 
 // Download files from ftp
 await connection.download();
+
+// Validate the downloaded dump file (dump is inside the webroot directory)
+const expectedDumpPath = config.localSitePath + siteConfig.ftp.webRootPath + '/' + dumpFileName;
+if (!fs.existsSync(expectedDumpPath) || fs.statSync(expectedDumpPath).size < 1024) {
+    console.error('Downloaded dump file is missing or too small: ' + dumpFileName);
+    throw new Error('Database dump validation failed');
+}
+const dumpHead = fs.readFileSync(expectedDumpPath, { encoding: 'utf8', flag: 'r' }).substring(0, 500);
+if (!dumpHead.includes('CREATE TABLE') && !dumpHead.includes('INSERT INTO') && !dumpHead.includes('mysqldump')) {
+    console.error('Downloaded dump file does not look like valid SQL');
+    throw new Error('Database dump validation failed');
+}
+console.log('Dump file validated: ' + dumpFileName + ' (' + Math.round(fs.statSync(expectedDumpPath).size / 1024) + ' KB)');
+
+// Clean up dump file from remote server
+try {
+    await connection.deleteFile(dumpFileName);
+    console.log('Remote dump file cleaned up');
+} catch (error) {
+    console.warn('Could not delete remote dump file:', error.message);
+}
 
 // Git commit & push & tag
 console.log('Commiting & pushing ' + siteConfig.repo + '...');

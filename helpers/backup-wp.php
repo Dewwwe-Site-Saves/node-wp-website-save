@@ -1,21 +1,47 @@
 <?php
+// Token-based authentication
+$tokenFile = __DIR__ . '/.dewwwe-backup-token';
+if (!file_exists($tokenFile)) { http_response_code(404); exit; }
+$expectedToken = trim(file_get_contents($tokenFile));
+$providedToken = $_GET['token'] ?? '';
+if (!hash_equals($expectedToken, $providedToken)) { http_response_code(404); exit; }
+
+// Token validated — delete it immediately
+unlink($tokenFile);
+
+// Load WordPress DB credentials
 require_once('wp-config.php');
-$DB_NAME = DB_NAME;
-$DB_USER = DB_USER;
-$DB_PASSWORD = DB_PASSWORD;
-$DB_HOST_WP = DB_HOST;
-$DB_HOST = str_replace(":3306", "", $DB_HOST_WP);
+$dbHost = str_replace(':3306', '', DB_HOST);
+$dbName = DB_NAME;
 
-// echo "mysqldump --host={$DB_HOST} --user={$DB_USER} --password={$DB_PASSWORD} {$DB_NAME} > db_{$DB_NAME}.sql";
+// Use token prefix in dump filename to prevent guessing
+$dumpFile = 'db_' . $dbName . '_' . substr($expectedToken, 0, 16) . '.sql';
+$dumpPath = __DIR__ . '/' . $dumpFile;
 
-$execOutputValue = exec("(mysqldump --host={$DB_HOST} --user={$DB_USER} --password={$DB_PASSWORD} {$DB_NAME} --no-tablespaces > db_{$DB_NAME}.sql) 2>&1", $output, $result);
+// Run mysqldump with properly escaped arguments
+$cmd = sprintf(
+    'mysqldump --host=%s --user=%s --password=%s %s --no-tablespaces > %s 2>&1',
+    escapeshellarg($dbHost),
+    escapeshellarg(DB_USER),
+    escapeshellarg(DB_PASSWORD),
+    escapeshellarg($dbName),
+    escapeshellarg($dumpPath)
+);
+exec($cmd, $output, $result);
 
-echo "<br />";
-var_dump($result);
-echo "<br />";
-var_dump($output);
-echo "<br />";
-var_dump($execOutputValue);
+// Verify dump succeeded and file is not empty
+$ok = ($result === 0 && file_exists($dumpPath) && filesize($dumpPath) > 0);
 
-echo "<p>All Good</p>"
+header('Content-Type: application/json');
+if ($ok) {
+    echo json_encode(['status' => 'ok', 'file' => $dumpFile]);
+} else {
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'file' => null]);
+    // Clean up failed dump
+    if (file_exists($dumpPath)) { unlink($dumpPath); }
+}
+
+// Self-delete this script
+unlink(__FILE__);
 ?>
