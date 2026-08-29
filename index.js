@@ -98,7 +98,7 @@ let pullError = false;
 if (mySiteFolderExists) {
     console.log('Pulling ' + siteConfig.repo + '...');
     try {
-        const { stdout, stderr } = await execPromise('cd "' + config.localSitePath + '" && git pull');
+        const { stdout, stderr } = await execPromise('cd "' + config.localSitePath + '" && git pull', { maxBuffer: 1024 * 500000 });
     } catch (error) {
         console.error(error);
         pullError = true;
@@ -106,7 +106,9 @@ if (mySiteFolderExists) {
 }
 
 if (mySiteFolderExists && pullError) {
-    // TODO: Delete the folder and clone again
+    console.log('Pull failed, deleting folder and cloning again...');
+    fs.rmSync(config.localSitePath, { recursive: true, force: true });
+    mySiteFolderExists = false;
 }
 
 if (!mySiteFolderExists || pullError) {
