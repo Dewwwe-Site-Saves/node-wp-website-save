@@ -30,13 +30,8 @@
     "dependencies": {
         "@pnp/nodejs": "^3.10.0",
         "@pnp/sp": "^3.10.0",
-        "axios": "^0.27.2",
-        "basic-ftp": "^5.0.2",
-        "child_process": "^1.0.2",
-        "fs": "^0.0.1-security",
-        "mysqldump": "^3.2.0",
-        "npm": "^8.19.2",
-        "rimraf": "^3.0.2",
+        "axios": "^1.7.9",
+        "basic-ftp": "^5.0.5",
         "ssh2-sftp-client": "^9.1.0"
     },
     "type": "module"

@@ -21,7 +21,6 @@ import Ftp from './lib/ftp.js';
 import Sp from './lib/sp.js';
 import Cleanup from './lib/cleanup.js';
 import { exec } from 'child_process';
-import mysqldump from 'mysqldump';
 import util from "util";
 import axios from 'axios';
 
@@ -71,18 +70,6 @@ function ftpConfig() {
         // Ftp class
         return new Ftp(__dirname, siteConfig);
     }
-}
-
-function getDataBaseDump() {
-    mysqldump({
-        connection: {
-            host: siteConfig.db.host,
-            user: siteConfig.db.user,
-            password: siteConfig.db.password,
-            database: siteConfig.db.database,
-        },
-        dumpToFile: __dirname + '/files/' + siteConfig.repo + '/dump.sql',
-    });
 }
 
 /************************
