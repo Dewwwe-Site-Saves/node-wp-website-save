@@ -12,6 +12,9 @@ if (process.argv[2] != undefined) {
 }
 const fullDownload = process.argv.includes('--full');
 
+const startTime = Date.now();
+console.log(`\n=== Backup started: ${siteDomain} — ${new Date().toLocaleString()} ===\n`);
+
 /************************
  *       Imports        *
  ************************/
@@ -239,8 +242,13 @@ try {
     throw new Error(error);
 }
 
-// Update SharePoint List 
+// Update SharePoint List
 if (config.sharepoint && siteConfig.spListItemID) {
     const sp = new Sp(__dirname, config);
     sp.updateListItem(siteConfig.spListItemID);
 }
+
+const elapsed = Math.round((Date.now() - startTime) / 1000);
+const mins = Math.floor(elapsed / 60);
+const secs = elapsed % 60;
+console.log(`\n=== Backup complete: ${siteDomain} — ${new Date().toLocaleString()} — ${mins}m ${secs}s ===\n`);
