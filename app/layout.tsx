@@ -6,7 +6,7 @@ import './globals.css';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
-        <html lang="en" suppressHydrationWarning>
+        <html lang="en" className="dark" suppressHydrationWarning>
             <body className="min-h-screen bg-background antialiased">
                 <div className="flex min-h-screen">
                     <Sidebar />
