@@ -80,18 +80,23 @@ function ftpConfig() {
  *       Exec           *
  ************************/
 
+let backupStatus = 'success';
+let connection;
+
+try {
+
 // Cleanup files (make sure /files/mysite/ exists)
 let clean = new Cleanup(__dirname, siteConfig.repo);
-let mySiteFolderExists = clean.setupFiles(); // Ensure the exitence of /files/ and /files/repo/.git if /files/repo/ exists
+let mySiteFolderExists = clean.setupFiles();
 
 // Git pull / clone
 let pullError = false;
 if (mySiteFolderExists) {
     console.log('Pulling ' + siteConfig.repo + '...');
     try {
-        const { stdout, stderr } = await execPromise('cd "' + config.localSitePath + '" && git pull', { maxBuffer: 1024 * 500000 });
+        await execPromise('cd "' + config.localSitePath + '" && git pull', { maxBuffer: 1024 * 500000 });
     } catch (error) {
-        console.error(error);
+        console.error('Pull failed:', error.message);
         pullError = true;
     }
 }
@@ -104,25 +109,18 @@ if (mySiteFolderExists && pullError) {
 
 if (!mySiteFolderExists || pullError) {
     console.log('Cloning ' + siteConfig.repo + '...');
-    try {
-        const repoUrl = siteConfig.repoUrl;
-        let requestUrl;
-        if (repoUrl.indexOf('git@') === 0) {
-            // SSH
-            requestUrl = repoUrl;
-        } else {
-            // HTTPS
-            requestUrl = repoUrl.replace('https://', 'https://' + config.github.user + ':' + config.github.appPass + '@');
-        }
-        const { stdout, stderr } = await execPromise('cd "' + config.filesPath + '" && git clone ' + requestUrl);
-    } catch (error) {
-        console.log(error);
-        throw new Error(error);
+    const repoUrl = siteConfig.repoUrl;
+    let requestUrl;
+    if (repoUrl.indexOf('git@') === 0) {
+        requestUrl = repoUrl;
+    } else {
+        requestUrl = repoUrl.replace('https://', 'https://' + config.github.user + ':' + config.github.appPass + '@');
     }
+    await execPromise('cd "' + config.filesPath + '" && git clone ' + requestUrl);
 }
 
 // Clean up any leftover dump files, tokens or backup scripts from previous runs
-let connection = ftpConfig();
+connection = ftpConfig();
 console.log('Cleaning up old backup artifacts...');
 try {
     const remoteFiles = await connection.listFiles();
@@ -169,20 +167,17 @@ try {
     // Clean up remote files in case of failure
     try { await connection.deleteFile('dewwwe-backup.php'); } catch (e) { /* may have self-deleted */ }
     try { await connection.deleteFile('.dewwwe-backup-token'); } catch (e) { /* may have been deleted */ }
-    console.error('Database dump failed:', error.message);
-    throw error;
+    throw new Error('Database dump failed: ' + error.message);
 }
 
 
 // Download files from ftp
 let mustCommitGitignore = false;
 if (fullDownload) {
-    // Full mode: wipe and re-download everything
     console.log('Full download mode...');
     mustCommitGitignore = clean.cleanupSiteFolder();
     await connection.download();
 } else {
-    // Incremental mode: only download changed files
     console.log('Incremental download mode...');
     mustCommitGitignore = clean.ensureGitFiles();
     await connection.downloadChanged();
@@ -191,13 +186,11 @@ if (fullDownload) {
 // Validate the downloaded dump file (dump is inside the webroot directory)
 const expectedDumpPath = config.localSitePath + siteConfig.ftp.webRootPath + '/' + dumpFileName;
 if (!fs.existsSync(expectedDumpPath) || fs.statSync(expectedDumpPath).size < 1024) {
-    console.error('Downloaded dump file is missing or too small: ' + dumpFileName);
-    throw new Error('Database dump validation failed');
+    throw new Error('Downloaded dump file is missing or too small: ' + dumpFileName);
 }
 const dumpHead = fs.readFileSync(expectedDumpPath, { encoding: 'utf8', flag: 'r' }).substring(0, 500);
 if (!dumpHead.includes('CREATE TABLE') && !dumpHead.includes('INSERT INTO') && !dumpHead.includes('MySQL dump') && !dumpHead.includes('mysqldump')) {
-    console.error('Downloaded dump file does not look like valid SQL');
-    throw new Error('Database dump validation failed');
+    throw new Error('Downloaded dump file does not look like valid SQL');
 }
 console.log('Dump file validated: ' + dumpFileName + ' (' + Math.round(fs.statSync(expectedDumpPath).size / 1024) + ' KB)');
 
@@ -210,9 +203,9 @@ try {
 }
 
 // Git commit & push & tag
-console.log('Commiting & pushing ' + siteConfig.repo + '...');
+console.log('Committing & pushing ' + siteConfig.repo + '...');
 const date = new Date();
-const mm = date.getMonth() + 1; // getMonth() is zero-based
+const mm = date.getMonth() + 1;
 const dd = date.getDate();
 const HH = date.getHours();
 const MM = date.getMinutes();
@@ -224,7 +217,6 @@ const dateString = [date.getFullYear() +
     (MM > 9 ? '' : '0') + MM
 ].join('-');
 
-// console.log(dateString);
 try {
     const gitSetupcmd = 'git config --global user.email "' + config.github.mail + '" && git config --global user.name "Auto Site Save" && git config --global http.postBuffer 157286400';
     const cdCmd = " && cd " + '"' + config.localSitePath + '"';
@@ -236,19 +228,33 @@ try {
     const tagCmd = " && git tag " + dateString.replaceAll('-','.').replaceAll('.0','.') ;
     const pushCmd = " && git push";
     const pushTagCmd = " && git push origin " + dateString.replaceAll('-','.').replaceAll('.0','.');
-    const { stdout, stderr } = await execPromise(gitSetupcmd + cdCmd + commitGitignore + commitCmd + tagCmd + pushCmd + pushTagCmd, { maxBuffer: 1024 * 500000 });
+    await execPromise(gitSetupcmd + cdCmd + commitGitignore + commitCmd + tagCmd + pushCmd + pushTagCmd, { maxBuffer: 1024 * 500000 });
+    console.log('Git push successful');
 } catch (error) {
-    console.log(error);
-    throw new Error(error);
+    console.error('Git commit/push failed:', error.message);
+    backupStatus = 'error';
 }
 
 // Update SharePoint List
 if (config.sharepoint && siteConfig.spListItemID) {
-    const sp = new Sp(__dirname, config);
-    sp.updateListItem(siteConfig.spListItemID);
+    try {
+        const sp = new Sp(__dirname, config);
+        await sp.updateListItem(siteConfig.spListItemID);
+    } catch (error) {
+        console.error('SharePoint update failed:', error.message);
+        // Non-critical: don't change backup status for SP failure
+    }
+}
+
+} catch (error) {
+    console.error('\nBACKUP FAILED:', error.message);
+    backupStatus = 'error';
 }
 
 const elapsed = Math.round((Date.now() - startTime) / 1000);
 const mins = Math.floor(elapsed / 60);
 const secs = elapsed % 60;
-console.log(`\n=== Backup complete: ${siteDomain} — ${new Date().toLocaleString()} — ${mins}m ${secs}s ===\n`);
+const statusLabel = backupStatus === 'success' ? 'COMPLETE' : 'FAILED';
+console.log(`\n=== Backup ${statusLabel}: ${siteDomain} — ${new Date().toLocaleString()} — ${mins}m ${secs}s ===\n`);
+
+process.exit(backupStatus === 'success' ? 0 : 1);
