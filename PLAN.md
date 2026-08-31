@@ -57,17 +57,64 @@ App web unique (Express + React/Vite + SQLite) dans un seul container Docker sur
 - Vérifie existence, taille (> 1 KB) et contenu SQL valide
 - Bloque le commit si le dump est invalide
 
-### 2C. Gestion d'erreurs et retry — A FAIRE
-- `lib/utils.js` : `retry(fn, maxAttempts=3, delayMs=5000)` avec backoff exponentiel
-- Try/catch autour de chaque étape majeure
-- En cas d'échec, toujours tenter le nettoyage distant
-- Exit code non-zéro en cas d'échec
+### 2C. Gestion d'erreurs — FAIT
+- Try/catch global : le script ne crash plus, termine toujours proprement
+- SharePoint isolé : si le certificat est expiré, log l'erreur sans affecter le backup
+- Git isolé : si le push échoue, le statut passe en erreur mais le script continue
+- Exit code : `0` si succès, `1` si erreur
+- Safeguard : nettoyage des vieux dumps/tokens/scripts avant chaque backup
+- Résumé final : COMPLETE ou FAILED avec timer
 
 ### 2D. Exécution parallèle multi-sites — A FAIRE
-- Extraire la logique par site dans `lib/backup.js` → `backupSite(domain, config)`
-- `npm run save --all` ou `npm run save domain1 domain2`
+
+**Refactoring : extraire la logique dans `lib/backup.js`**
+- Fonction `backupSite(domain, config)` qui retourne un objet résultat :
+  ```js
+  {
+    domain: 'dewwwe.com',
+    status: 'success' | 'error',
+    startedAt: Date,
+    finishedAt: Date,
+    durationMs: 45000,
+    filesDownloaded: 3,
+    filesUnchanged: 20830,
+    filesDeleted: 0,
+    dumpSizeBytes: 54812345,
+    commitSha: 'abc123',
+    log: '... log complet du run ...',
+    error: null
+  }
+  ```
+
+**Logging par run :**
+- Chaque appel à `backupSite()` crée un logger qui capture tout dans un buffer
+- Le logger remplace `console.log` pour ce run (préfixé par `[domain]`)
+- Le log complet est retourné dans le résultat
+- En mode CLI, le log est aussi affiché dans la console en temps réel
+- En Phase 3 (app web), le log sera stocké dans SQLite (table `backups.log`)
+
+**CLI multi-sites :**
+- `npm run save dewwwe.com` — un seul site (comme avant)
+- `npm run save dewwwe.com tna-part.com` — plusieurs sites
+- `npm run save -- --all` — tous les sites actifs
 - `Promise.allSettled()` avec concurrence limitée (défaut : 3)
-- Rapport final succès/échec par site
+- Rapport final : tableau récapitulatif succès/échec par site
+
+**Préparation pour la Phase 3 (app web) :**
+- `backupSite()` est une fonction pure qui ne dépend pas de `process.argv` ni de `console`
+- Peut être appelée depuis le CLI (index.js) ou depuis Express (API)
+- Le parallélisme est géré par un job queue simple :
+  ```js
+  class BackupQueue {
+    constructor(concurrency = 3) { ... }
+    enqueue(domain) { ... }  // Ajoute un job, retourne une Promise du résultat
+    getRunning() { ... }     // Jobs en cours (pour l'UI)
+    getPending() { ... }     // Jobs en attente
+  }
+  ```
+- Node.js gère bien le parallélisme I/O async (FTP, réseau, git child_process)
+- Express reste réactif même pendant plusieurs backups car rien ne bloque l'event loop
+- Pas besoin de worker_threads ni de Redis/Bull — un simple pool de promesses suffit
 
 ### 2E. Support WP-CLI pour les sites SSH — A FAIRE
 - `wp db export` via SSH au lieu du script PHP (plus fiable, pas de timeout)
