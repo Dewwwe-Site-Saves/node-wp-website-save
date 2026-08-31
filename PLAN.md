@@ -1,176 +1,99 @@
-# Plan : Sécurisation et optimisation de node-wp-website-save
+# Plan : WP Backup Manager
 
-## Contexte
+## Remaining tasks
 
-Outil Node.js de backup de sites WordPress utilisé pour 7 sites clients. Le script upload un fichier PHP sur le site pour dumper la DB, télécharge tous les fichiers via FTP/SFTP, commit/push sur GitHub, et met à jour une liste SharePoint. Actuellement orchestré par Jenkins.
+### Credential rotation (manual)
+- Revoke GitHub PAT and create a new fine-grained one
+- Change FTP/SFTP passwords for all 7 sites
+- Regenerate SharePoint certificate
+- Switch all repos to SSH clone
 
-**Architecture cible :**
-App web unique (Express + React/Vite + SQLite) dans un seul container Docker sur le NAS Synology. UI pour configurer les sites, voir l'historique, déclencher les backups. Scheduler cron intégré. La liste SharePoint continue d'être mise à jour en parallèle.
-
----
-
-## Phase 1 — Corrections de sécurité critiques — FAIT
-
-### 1A. backup-wp.php sécurisé — FAIT
-- Auth par token (`.dewwwe-backup-token` uploadé séparément via FTP)
-- `escapeshellarg()` sur tous les paramètres mysqldump
-- Nom du dump non devinable (contient le token)
-- Vérifie succès du dump + fichier non vide
-- Retourne du JSON propre
-- Se supprime automatiquement après exécution
-
-### 1B. index.js adapté — FAIT
-- Génération de token crypto
-- Parsing de la réponse JSON, vérification du succès
-- Validation du dump téléchargé (taille + contenu SQL)
-- Nettoyage du dump distant après download
-- Fix maxBuffer sur git pull pour les gros repos
-- Fix du fallback pull error → re-clone
-
-### 1C. deleteFile() sur FTP et SFTP — FAIT
-
-### 1D. Dépendances npm nettoyées — FAIT
-- `basic-ftp` → 5.0.5 (fix path traversal)
-- `axios` → 1.7.x (fix 16+ CVEs)
-- Supprimé : `child_process`, `fs`, `npm`, `rimraf`, `mysqldump`
-- 42 vulnérabilités → 3 modérées (toutes dans @azure/msal-node, non fixable sans breaking change PnP)
-
-### 1E. Rotation des credentials — A FAIRE (action manuelle)
-- Révoquer le GitHub PAT et en créer un nouveau (fine-grained)
-- Changer les mots de passe FTP/SFTP des 7 sites
-- Régénérer le certificat SharePoint
-- Passer tous les repos en clone SSH
+### WP-CLI for SSH sites (optional)
+- `wp db export` via SSH instead of the PHP script (more reliable, no PHP timeout)
+- Config: add `ssh: true` + `sshKey` field per site
+- Automatic fallback to PHP script if no SSH
 
 ---
 
-## Phase 2 — Performance et fiabilité
+## Phase 3 — Web app (Next.js + SQLite)
 
-### 2A. Téléchargement incrémental — FAIT
-- `lib/sync.js` : logique de comparaison partagée (taille + mtime)
-- `downloadChanged()` sur FTP et SFTP : ne télécharge que les fichiers modifiés
-- Suppression des fichiers locaux qui n'existent plus sur le distant
-- `ensureGitFiles()` dans cleanup.js : version light pour le mode incrémental
-- Mode par défaut = incrémental, `--full` pour forcer un download complet
-- Impact attendu : de ~30 min à <2 min par site
+> The CLI (`index.js`) stays functional and independent. The web app is a second consumer
+> of the same `lib/backup.js` module. You can use the CLI without starting the web server.
 
-### 2B. Validation du dump avant commit — FAIT
-- Vérifie existence, taille (> 1 KB) et contenu SQL valide
-- Bloque le commit si le dump est invalide
+### Architecture
 
-### 2C. Gestion d'erreurs — FAIT
-- Try/catch global : le script ne crash plus, termine toujours proprement
-- SharePoint isolé : si le certificat est expiré, log l'erreur sans affecter le backup
-- Git isolé : si le push échoue, le statut passe en erreur mais le script continue
-- Exit code : `0` si succès, `1` si erreur
-- Safeguard : nettoyage des vieux dumps/tokens/scripts avant chaque backup
-- Résumé final : COMPLETE ou FAILED avec timer
+**Two ways to use the same project:**
+- **CLI**: `node index.js dewwwe.com` — as before, uses `lib/backup.js` directly
+- **Web app**: `npm run dev` / `npm start` — Next.js that also uses `lib/backup.js`
 
-### 2D. Exécution parallèle multi-sites — A FAIRE
+**Stack:**
+- Next.js (App Router) — fullstack React framework
+- SQLite via better-sqlite3 — lightweight storage (single file, no DB service)
+- node-cron — built-in scheduler for planned backups
+- Existing modules (`lib/backup.js`, `lib/ftp.js`, `lib/sftp.js`, etc.) — shared between CLI and app
 
-**Refactoring : extraire la logique dans `lib/backup.js`**
-- Fonction `backupSite(domain, config)` qui retourne un objet résultat :
-  ```js
-  {
-    domain: 'dewwwe.com',
-    status: 'success' | 'error',
-    startedAt: Date,
-    finishedAt: Date,
-    durationMs: 45000,
-    filesDownloaded: 3,
-    filesUnchanged: 20830,
-    filesDeleted: 0,
-    dumpSizeBytes: 54812345,
-    commitSha: 'abc123',
-    log: '... log complet du run ...',
-    error: null
-  }
-  ```
-
-**Logging par run :**
-- Chaque appel à `backupSite()` crée un logger qui capture tout dans un buffer
-- Le logger remplace `console.log` pour ce run (préfixé par `[domain]`)
-- Le log complet est retourné dans le résultat
-- En mode CLI, le log est aussi affiché dans la console en temps réel
-- En Phase 3 (app web), le log sera stocké dans SQLite (table `backups.log`)
-
-**CLI multi-sites :**
-- `npm run save dewwwe.com` — un seul site (comme avant)
-- `npm run save dewwwe.com tna-part.com` — plusieurs sites
-- `npm run save -- --all` — tous les sites actifs
-- `Promise.allSettled()` avec concurrence limitée (défaut : 3)
-- Rapport final : tableau récapitulatif succès/échec par site
-
-**Préparation pour la Phase 3 (app web) :**
-- `backupSite()` est une fonction pure qui ne dépend pas de `process.argv` ni de `console`
-- Peut être appelée depuis le CLI (index.js) ou depuis Express (API)
-- Le parallélisme est géré par un job queue simple :
-  ```js
-  class BackupQueue {
-    constructor(concurrency = 3) { ... }
-    enqueue(domain) { ... }  // Ajoute un job, retourne une Promise du résultat
-    getRunning() { ... }     // Jobs en cours (pour l'UI)
-    getPending() { ... }     // Jobs en attente
-  }
-  ```
-- Node.js gère bien le parallélisme I/O async (FTP, réseau, git child_process)
-- Express reste réactif même pendant plusieurs backups car rien ne bloque l'event loop
-- Pas besoin de worker_threads ni de Redis/Bull — un simple pool de promesses suffit
-
-### 2E. Support WP-CLI pour les sites SSH — A FAIRE
-- `wp db export` via SSH au lieu du script PHP (plus fiable, pas de timeout)
-- Config : champ `ssh: true` + `sshKey` par site
-- Fallback automatique sur le script PHP si pas de SSH
-
----
-
-## Phase 3 — App web (Express + React/Vite + SQLite)
-
-### 3A. Structure du projet
+### Project structure
 
 ```
 wp-backup-manager/
-├── server/
-│   ├── index.js               # Entry point Express
-│   ├── routes/
-│   │   ├── sites.js           # CRUD sites
-│   │   ├── backups.js         # Déclencher + historique backups
-│   │   └── settings.js        # Config globale
-│   ├── services/
-│   │   ├── backup.js          # Logique de backup (refactorisée)
-│   │   ├── ftp.js
-│   │   ├── sftp.js
-│   │   ├── ssh.js             # Client SSH pour WP-CLI
-│   │   ├── git.js
-│   │   ├── sharepoint.js
-│   │   ├── scheduler.js       # node-cron
-│   │   └── hackDetector.js    # Détection de piratage
-│   ├── db/
-│   │   ├── schema.sql
-│   │   └── index.js           # Connexion better-sqlite3
-│   └── helpers/
-│       └── backup-wp.php
-├── client/                    # Frontend React + Vite
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── Dashboard.jsx
-│   │   │   ├── Sites.jsx
-│   │   │   ├── SiteForm.jsx
-│   │   │   ├── History.jsx
-│   │   │   ├── Alerts.jsx     # Alertes piratage
-│   │   │   └── Settings.jsx
-│   │   ├── components/
-│   │   │   ├── StatusBadge.jsx
-│   │   │   ├── BackupLog.jsx
-│   │   │   ├── AlertCard.jsx
-│   │   │   └── Layout.jsx
-│   │   └── App.jsx
-│   └── vite.config.js
+├── index.js                   # CLI entry point (unchanged)
+├── lib/                       # Shared modules CLI + Web app
+│   ├── backup.js              # Backup logic (exists)
+│   ├── ftp.js                 # FTP client (exists)
+│   ├── sftp.js                # SFTP client (exists)
+│   ├── sp.js                  # SharePoint (exists)
+│   ├── sync.js                # Incremental comparison (exists)
+│   ├── cleanup.js             # Local cleanup (exists)
+│   ├── db.js                  # SQLite connection + queries
+│   ├── scheduler.js           # node-cron, backup scheduling
+│   └── queue.js               # Job queue for parallelism from UI
+├── helpers/
+│   └── backup-wp.php          # Secured PHP script (exists)
+├── app/                       # Next.js App Router
+│   ├── layout.tsx             # Global layout (sidebar navigation)
+│   ├── page.tsx               # Dashboard
+│   ├── sites/
+│   │   ├── page.tsx           # Site list
+│   │   ├── new/page.tsx       # Add site form
+│   │   └── [id]/page.tsx      # Site detail / edit
+│   ├── history/
+│   │   ├── page.tsx           # Backup history
+│   │   └── [id]/page.tsx      # Backup detail (log)
+│   ├── settings/
+│   │   └── page.tsx           # Global config
+│   └── api/                   # Next.js API Routes
+│       ├── sites/
+│       │   ├── route.ts       # GET (list), POST (create)
+│       │   └── [id]/
+│       │       ├── route.ts   # GET, PUT, DELETE
+│       │       └── test/route.ts  # POST test connection
+│       ├── backups/
+│       │   ├── route.ts       # GET (history)
+│       │   ├── run/route.ts   # POST run-all
+│       │   ├── run/[id]/route.ts  # POST run single site
+│       │   └── [id]/
+│       │       ├── route.ts   # GET detail
+│       │       └── log/route.ts   # GET full log
+│       ├── dashboard/
+│       │   └── route.ts       # GET aggregated stats
+│       └── settings/
+│           └── route.ts       # GET, PUT
+├── components/
+│   ├── Layout.tsx
+│   ├── SiteCard.tsx
+│   ├── StatusBadge.tsx
+│   ├── BackupLog.tsx
+│   └── SiteForm.tsx
+├── data/                      # Persistent data (Docker volume)
+│   ├── backup.db              # SQLite
+│   └── files/                 # Site backups (git repos)
+├── next.config.js             # output: 'standalone' for Docker
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
 ```
 
-### 3B. Base de données SQLite
+### SQLite schema
 
 ```sql
 CREATE TABLE sites (
@@ -182,7 +105,7 @@ CREATE TABLE sites (
   host TEXT NOT NULL,
   port INTEGER DEFAULT 21,
   username TEXT NOT NULL,
-  password TEXT,                          -- chiffré au repos
+  password TEXT,                          -- encrypted at rest
   web_root_path TEXT DEFAULT 'www',
   ssh_key_path TEXT,
   sp_list_item_id TEXT,
@@ -199,12 +122,13 @@ CREATE TABLE backups (
   status TEXT NOT NULL DEFAULT 'running', -- 'running', 'success', 'error', 'warning'
   duration_ms INTEGER,
   files_downloaded INTEGER,
-  files_changed INTEGER,
+  files_unchanged INTEGER,
+  files_deleted INTEGER,
   dump_size_bytes INTEGER,
   commit_sha TEXT,
   error_message TEXT,
-  hack_alert INTEGER DEFAULT 0,          -- 1 si fichiers suspects détectés
-  hack_details TEXT,                      -- JSON détails des fichiers suspects
+  hack_alert INTEGER DEFAULT 0,
+  hack_details TEXT,
   log TEXT
 );
 
@@ -212,72 +136,90 @@ CREATE TABLE settings (
   key TEXT PRIMARY KEY,
   value TEXT
 );
-
-CREATE TABLE notifications (
-  id INTEGER PRIMARY KEY,
-  type TEXT NOT NULL,       -- 'backup_fail', 'hack_detected', 'backup_success'
-  site_id INTEGER REFERENCES sites(id),
-  backup_id INTEGER REFERENCES backups(id),
-  sent_at TEXT,
-  channel TEXT,             -- 'email', 'webhook'
-  status TEXT DEFAULT 'pending'
-);
 ```
 
-### 3C. API REST
+**config.json → SQLite migration:**
+- One-shot migration script that reads `config.json` and inserts sites + settings into SQLite
+- After migration, `config.json` is no longer needed (CLI can read from SQLite too)
+- Fallback: if `config.json` exists, CLI uses it first (backward compatibility)
 
-| Méthode | Route | Description |
-|---------|-------|-------------|
-| GET | `/api/sites` | Liste tous les sites |
-| POST | `/api/sites` | Ajouter un site |
-| PUT | `/api/sites/:id` | Modifier un site |
-| DELETE | `/api/sites/:id` | Supprimer un site |
-| POST | `/api/sites/:id/test` | Tester la connexion FTP/SFTP |
-| POST | `/api/backups/run/:id` | Lancer un backup pour un site |
-| POST | `/api/backups/run-all` | Lancer tous les backups |
-| GET | `/api/backups` | Historique (filtrable par site, statut) |
-| GET | `/api/backups/:id/log` | Log détaillé d'un backup |
-| POST | `/api/backups/:id/restore` | Restaurer un backup sur le site |
-| GET | `/api/alerts` | Alertes piratage actives |
-| PUT | `/api/alerts/:id/dismiss` | Marquer une alerte comme traitée |
-| GET | `/api/settings` | Config globale |
-| PUT | `/api/settings` | Modifier config globale |
-| GET | `/api/dashboard` | Stats agrégées |
+### API Routes
 
-### 3D. Pages UI
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/sites` | List all sites |
+| POST | `/api/sites` | Add a site |
+| GET | `/api/sites/[id]` | Site detail |
+| PUT | `/api/sites/[id]` | Update a site |
+| DELETE | `/api/sites/[id]` | Delete a site |
+| POST | `/api/sites/[id]/test` | Test FTP/SFTP connection |
+| POST | `/api/backups/run/[id]` | Run backup for a site |
+| POST | `/api/backups/run` | Run all active backups |
+| GET | `/api/backups` | History (filterable by site, status) |
+| GET | `/api/backups/[id]` | Backup detail |
+| GET | `/api/backups/[id]/log` | Full backup log |
+| GET | `/api/dashboard` | Aggregated stats (last backup per site) |
+| GET | `/api/settings` | Global config |
+| PUT | `/api/settings` | Update global config |
 
-1. **Dashboard** : cards par site avec statut du dernier backup (vert/rouge/orange/gris), date, durée. Alerte rouge si piratage détecté. Bouton "Tout sauvegarder".
-2. **Sites** : tableau des sites configurés. Ajout/édition via formulaire. Boutons "Tester la connexion", "Lancer le backup".
-3. **Historique** : tableau paginé avec filtre par site et statut. Clic pour voir le log. Badge d'alerte si fichiers suspects.
-4. **Alertes** : liste des détections de piratage avec détails des fichiers suspects, diff, actions possibles.
-5. **Settings** : config globale (GitHub, SharePoint, SMTP, chemins).
+### UI Pages
 
-### 3E. Scheduler intégré
+1. **Dashboard** (`/`) — site cards with last backup status (green/red/orange/gray), date, duration. "Backup All" button.
+2. **Sites** (`/sites`) — table of configured sites. "Run Backup", "Edit", "Test Connection" buttons.
+3. **Add/Edit site** (`/sites/new`, `/sites/[id]`) — form (domain, host, credentials, protocol, port, webroot, cron schedule, GitHub repo).
+4. **History** (`/history`) — paginated table with site and status filters. Click for detail.
+5. **Backup detail** (`/history/[id]`) — full log, metrics (duration, files, dump size), commit SHA.
+6. **Settings** (`/settings`) — global config (GitHub, SharePoint, SMTP).
 
-- `node-cron` pour planifier les backups par site
-- Chaque site a son propre cron schedule (configurable via l'UI)
-- Reconfiguration automatique quand la config change
+### Job Queue
 
-### 3F. Docker
+```js
+// lib/queue.js
+class BackupQueue {
+  constructor(concurrency = 3) { ... }
+  enqueue(domain, config, options) { ... }  // Returns a job ID
+  getStatus(jobId) { ... }                  // 'pending' | 'running' | 'complete' | 'error'
+  getRunning() { ... }                      // Running jobs
+  getPending() { ... }                      // Pending jobs
+  getResult(jobId) { ... }                  // Backup result
+}
+```
+
+- Singleton shared across all API routes
+- `POST /api/backups/run/[id]` enqueues a job and returns immediately with the job ID
+- Frontend can poll `GET /api/backups` to see progress
+- Each completed job is saved to SQLite
+
+### Scheduler
+
+- `node-cron` for per-site scheduled backups
+- Each site has its own cron schedule (configurable via UI)
+- Scheduler starts at Next.js boot (via `instrumentation.ts`)
+- Auto-reconfigures when sites are added/modified/deleted
+
+### Docker
 
 ```dockerfile
-FROM node:20-alpine AS frontend
-WORKDIR /app/client
-COPY client/package*.json ./
+FROM node:20-alpine AS builder
+RUN apk add --no-cache git openssh-client python3 make g++
+WORKDIR /app
+COPY package*.json ./
 RUN npm ci
-COPY client/ .
+COPY . .
 RUN npm run build
 
 FROM node:20-alpine
 RUN apk add --no-cache git openssh-client
 WORKDIR /app
-COPY server/package*.json ./
-RUN npm ci --production
-COPY server/ .
-COPY --from=frontend /app/client/dist ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/helpers ./helpers
 VOLUME ["/app/data", "/root/.ssh"]
 EXPOSE 3000
-CMD ["node", "index.js"]
+ENV NODE_ENV=production
+CMD ["node", "server.js"]
 ```
 
 ```yaml
@@ -307,185 +249,67 @@ networks:
         - subnet: 172.20.X.0/29
 ```
 
----
-
-## Phase 4 — Détection de piratage
-
-### 4A. Analyse des fichiers modifiés après chaque backup
-
-Après le download incrémental, le script connaît la liste des fichiers modifiés. On peut analyser ces changements pour détecter des signes de piratage.
-
-**Service : `server/services/hackDetector.js`**
-
-**Règles de détection :**
-
-1. **Fichiers PHP suspects dans uploads/**
-   - WordPress ne devrait jamais avoir de fichiers `.php` dans `wp-content/uploads/`
-   - Alerte si un `.php` apparaît ou est modifié dans ce dossier
-   
-2. **Fichiers avec des noms suspects**
-   - Noms aléatoires/encodés : `xk3j2.php`, `wp-tmp-2847.php`
-   - Fichiers commençant par `.` dans des dossiers inhabituels : `.htaccess` modifié, `.user.ini` ajouté
-   - Fichiers dans les dossiers core WP qui ne font pas partie d'une version connue
-
-3. **Contenu suspect dans les fichiers modifiés**
-   - `eval(`, `base64_decode(`, `gzinflate(`, `str_rot13(` — obfuscation classique
-   - `$_GET[`, `$_POST[`, `$_REQUEST[` dans des fichiers qui ne devraient pas en contenir
-   - `exec(`, `system(`, `passthru(`, `shell_exec(` — exécution de commandes
-   - `file_get_contents('http` ou `curl_exec` dans des fichiers non-plugin
-   - Chaînes encodées en base64 très longues (> 500 chars)
-
-4. **Volume anormal de fichiers modifiés**
-   - Si > 50 fichiers PHP sont modifiés en dehors d'une mise à jour WordPress connue → alerte
-   - Comparer avec le nombre moyen de fichiers modifiés lors des backups précédents
-
-5. **Fichiers core WordPress modifiés**
-   - `wp-admin/`, `wp-includes/` ne devraient pas changer sauf lors d'une mise à jour WP
-   - Comparer les checksums avec les versions officielles WordPress (API `wp-version-check`)
-
-**Niveaux d'alerte :**
-- **Critique** : fichier PHP dans uploads, code d'exécution de commandes dans un fichier core
-- **Warning** : volume anormal de modifications, fichiers suspects dans les thèmes/plugins
-- **Info** : modifications mineures détectées (pour review manuelle)
-
-**Intégration dans le flow de backup :**
-1. Après `downloadChanged()`, récupérer la liste des fichiers téléchargés (modifiés/nouveaux)
-2. Passer cette liste au `hackDetector`
-3. Si alerte détectée : marquer le backup comme `warning`, stocker les détails dans `hack_details`
-4. Déclencher une notification (email/webhook)
-5. Le backup continue normalement (on sauvegarde quand même, c'est justement le but d'avoir un historique)
-
-### 4B. Checksums WordPress
-
-- Au premier backup, stocker les checksums de tous les fichiers core WP
-- API WordPress.org : `https://api.wordpress.org/core/checksums/1.0/?version=X.X.X` retourne les checksums officiels
-- À chaque backup, comparer les fichiers core avec les checksums attendus
-- Toute divergence = alerte
-
----
-
-## Phase 5 — Notifications par email
-
-### 5A. Configuration SMTP
-
-**Dans Settings de l'UI :**
-- Serveur SMTP (host, port, user, password)
-- Adresse expéditeur
-- Adresse(s) destinataire(s)
-- Option : envoyer un email uniquement en cas d'erreur/alerte, ou aussi en cas de succès
-
-**Stockage** : table `settings` (clés `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `smtp_from`, `notify_emails`, `notify_on_success`, `notify_on_failure`, `notify_on_hack`)
-
-### 5B. Service de notification
-
-**Service : `server/services/notifier.js`**
-
-- Utilise `nodemailer` pour l'envoi SMTP
-- Templates d'emails :
-  - **Backup réussi** : site, date, durée, nombre de fichiers modifiés, lien vers le commit GitHub
-  - **Backup échoué** : site, date, message d'erreur, log partiel
-  - **Piratage détecté** : site, date, liste des fichiers suspects avec le niveau d'alerte, recommandations
-- Envoi asynchrone (ne bloque pas le backup)
-- Historique dans la table `notifications`
-- Retry en cas d'échec d'envoi (3 tentatives)
-
-### 5C. Digest quotidien (optionnel)
-
-- Email récapitulatif quotidien : état de tous les sites, derniers backups, alertes en cours
-- Envoyé le matin (configurable)
-- Utile pour s'assurer que tout fonctionne sans vérifier l'UI
-
----
-
-## Phase 6 — Restauration de backup
-
-### 6A. Restauration des fichiers
-
-**Flow de restauration :**
-1. L'utilisateur sélectionne un backup dans l'historique (identifié par son commit SHA / tag git)
-2. Le système checkout la version correspondante depuis le repo git
-3. Upload de tous les fichiers vers le site via FTP/SFTP
-4. Option : restaurer uniquement certains dossiers (`wp-content/themes/`, `wp-content/plugins/`, etc.)
-
-**Précautions :**
-- Confirmation explicite avant restauration
-- Backup automatique de l'état actuel avant restauration (pour pouvoir annuler)
-- Log détaillé de la restauration
-- Ne pas écraser les fichiers de config (`wp-config.php`, `.htaccess`) sauf si explicitement demandé
-
-### 6B. Restauration de la base de données
-
-**Script PHP dédié : `helpers/restore-db.php`**
-
-- Même système d'authentification par token que `backup-wp.php`
-- Upload du fichier SQL dump via FTP/SFTP
-- Le script PHP importe le dump dans la base
-- Utilise `mysql` CLI ou PHP `mysqli` pour l'import
-- Se supprime automatiquement après exécution
-- Vérifications avant import : taille du dump, nom de la base correct
-
-**Précautions :**
-- Export automatique de la base actuelle avant import (point de restauration)
-- Vérification que le dump correspond bien au site (nom de la base)
-- Timeout élevé pour les grosses bases
-- Option dry-run pour vérifier sans importer
-
-### 6C. UI de restauration
-
-**Page dans l'historique :**
-- Bouton "Restaurer" sur chaque entrée de backup
-- Modal de confirmation avec options :
-  - Restaurer les fichiers uniquement
-  - Restaurer la base de données uniquement
-  - Restaurer tout
-  - Exclure certains dossiers
-- Barre de progression pendant la restauration
-- Log en temps réel
-
----
-
-## Ordre d'implémentation complet
+### Implementation order
 
 ```
-Phase 1 (sécurité)                   ← FAIT
-Phase 2A (incrémental)               ← FAIT
-Phase 2B (validation dump)           ← FAIT
-Phase 2C (error handling + retry)    ← A FAIRE
-Phase 2D (parallel multi-sites)      ← A FAIRE
-Phase 2E (WP-CLI pour sites SSH)     ← A FAIRE
-
-Phase 3 (app web)                    ← A FAIRE
-  3A. Structure projet
-  3B. DB SQLite + migration config.json → DB
-  3C. API REST
-  3D. Frontend React/Vite
-  3E. Scheduler node-cron
-  3F. Docker + Compose
-
-Phase 4 (détection piratage)         ← A FAIRE
-  4A. Analyse des fichiers modifiés
-  4B. Checksums WordPress
-
-Phase 5 (notifications email)        ← A FAIRE
-  5A. Config SMTP
-  5B. Service notifier
-  5C. Digest quotidien (optionnel)
-
-Phase 6 (restauration)              ← A FAIRE
-  6A. Restauration fichiers
-  6B. Restauration DB
-  6C. UI de restauration
-
-Optionnel :
-  - Remplacer Git par Restic pour le stockage
-  - Webhooks Discord/Slack
+3.1  Init Next.js + SQLite + config.json migration
+3.2  API routes sites (CRUD) + Sites page + form
+3.3  API routes backups (run, history) + job queue
+3.4  Dashboard page
+3.5  History page + backup detail (log)
+3.6  Settings page
+3.7  Scheduler (node-cron + instrumentation.ts)
+3.8  Docker + Compose
+3.9  Full test on NAS
 ```
 
-## Vérification
+---
 
-- **Phase 1** : Testé sur dewwwe.com — token auth OK, script auto-supprimé, dump validé
-- **Phase 2** : Tester le mode incrémental (temps, fichiers skipped). Vérifier qu'un dump vide bloque le commit
-- **Phase 3** : Déployer sur le NAS, ajouter un site via l'UI, lancer un backup, vérifier l'historique
-- **Phase 4** : Injecter un fichier PHP test dans uploads/ et vérifier la détection
-- **Phase 5** : Envoyer un email de test depuis les settings
-- **Phase 6** : Restaurer un backup de test sur un site non-critique
+## Phase 4 — Hack detection
+
+### File analysis after each backup
+
+After incremental download, the script knows which files were modified. Analyze changes to detect signs of compromise.
+
+**Detection rules:**
+
+1. **PHP files in uploads/** — WordPress should never have `.php` files in `wp-content/uploads/`
+2. **Suspicious filenames** — random/encoded names (`xk3j2.php`), dotfiles in unusual places (`.user.ini`)
+3. **Suspicious content** — `eval(`, `base64_decode(`, `gzinflate(`, `exec(`, `system(`, `shell_exec(` in modified files
+4. **Abnormal volume** — >50 PHP files modified outside of a known WP update
+5. **Modified core files** — `wp-admin/`, `wp-includes/` should not change except during WP updates. Compare checksums with official WordPress API (`api.wordpress.org/core/checksums/1.0/`)
+
+**Alert levels:** Critical, Warning, Info
+
+**Integration:** runs after `downloadChanged()`, results stored in `backups.hack_alert` + `backups.hack_details`. Triggers notification. Backup continues normally (we want the history).
+
+---
+
+## Phase 5 — Email notifications
+
+- SMTP configuration in Settings (host, port, user, password, from, recipients)
+- `nodemailer` for sending
+- Templates: backup success, backup failure, hack detected
+- Async sending (does not block backup)
+- Optional daily digest email
+
+---
+
+## Phase 6 — Backup restoration
+
+### File restoration
+- Select a backup from history (identified by commit SHA / git tag)
+- Checkout the corresponding version from the git repo
+- Upload files to the site via FTP/SFTP
+- Option: restore only specific directories
+
+### Database restoration
+- Dedicated PHP script (`helpers/restore-db.php`) with same token auth pattern
+- Upload SQL dump, PHP script imports it
+- Auto-backup current DB before import (rollback point)
+- Self-deletes after execution
+
+### UI
+- "Restore" button on each backup in history
+- Confirmation modal with options (files only, DB only, everything, exclude dirs)
+- Progress bar + real-time log
