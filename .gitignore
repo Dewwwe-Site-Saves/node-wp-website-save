@@ -6,3 +6,4 @@ files/*
 node_modules
 .vscode
 /sp-certificates
+.dewwwe-backup-token

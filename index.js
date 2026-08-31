@@ -10,6 +10,7 @@ if (process.argv[2] != undefined) {
 } else {
     siteDomain = 'lbi-3d.fr';
 }
+const fullDownload = process.argv.includes('--full');
 
 /************************
  *       Imports        *
@@ -117,13 +118,31 @@ if (!mySiteFolderExists || pullError) {
     }
 }
 
+// Clean up any leftover dump files, tokens or backup scripts from previous runs
+let connection = ftpConfig();
+console.log('Cleaning up old backup artifacts...');
+try {
+    const remoteFiles = await connection.listFiles();
+    const leftovers = remoteFiles.filter(f =>
+        f.name.startsWith('db_') && f.name.endsWith('.sql') ||
+        f.name === '.dewwwe-backup-token' ||
+        f.name === 'dewwwe-backup.php'
+    );
+    for (const file of leftovers) {
+        console.log('  Removing leftover: ' + file.name);
+        await connection.deleteFile(file.name);
+    }
+    if (leftovers.length === 0) console.log('  No leftovers found');
+} catch (error) {
+    console.warn('Could not clean up leftovers:', error.message);
+}
+
 // Generate a secure token for backup authentication
 const backupToken = crypto.randomBytes(32).toString('hex');
 const tokenFilePath = config.localPath + '/helpers/.dewwwe-backup-token';
 fs.writeFileSync(tokenFilePath, backupToken);
 
 // Upload token file and backup script
-let connection = ftpConfig();
 console.log('Uploading backup token and script...');
 await connection.uploadFile(tokenFilePath, '.dewwwe-backup-token');
 await connection.uploadFile(config.localPath + '/helpers/backup-wp.php', 'dewwwe-backup.php');
@@ -152,12 +171,19 @@ try {
 }
 
 
-// Empty folder (except .git and readme.md)
-let mustCommitGitignore = clean.cleanupSiteFolder();
-
-
 // Download files from ftp
-await connection.download();
+let mustCommitGitignore = false;
+if (fullDownload) {
+    // Full mode: wipe and re-download everything
+    console.log('Full download mode...');
+    mustCommitGitignore = clean.cleanupSiteFolder();
+    await connection.download();
+} else {
+    // Incremental mode: only download changed files
+    console.log('Incremental download mode...');
+    mustCommitGitignore = clean.ensureGitFiles();
+    await connection.downloadChanged();
+}
 
 // Validate the downloaded dump file (dump is inside the webroot directory)
 const expectedDumpPath = config.localSitePath + siteConfig.ftp.webRootPath + '/' + dumpFileName;
@@ -166,7 +192,7 @@ if (!fs.existsSync(expectedDumpPath) || fs.statSync(expectedDumpPath).size < 102
     throw new Error('Database dump validation failed');
 }
 const dumpHead = fs.readFileSync(expectedDumpPath, { encoding: 'utf8', flag: 'r' }).substring(0, 500);
-if (!dumpHead.includes('CREATE TABLE') && !dumpHead.includes('INSERT INTO') && !dumpHead.includes('mysqldump')) {
+if (!dumpHead.includes('CREATE TABLE') && !dumpHead.includes('INSERT INTO') && !dumpHead.includes('MySQL dump') && !dumpHead.includes('mysqldump')) {
     console.error('Downloaded dump file does not look like valid SQL');
     throw new Error('Database dump validation failed');
 }
