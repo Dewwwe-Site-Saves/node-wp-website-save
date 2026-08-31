@@ -2,8 +2,15 @@
 config.txt
 config.json
 files/*
-!files/.gitkeep 
+!files/.gitkeep
 node_modules
 .vscode
 /sp-certificates
 .dewwwe-backup-token*
+
+# Next.js
+.next
+out
+
+# Data (SQLite + backups)
+/data

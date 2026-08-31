@@ -92,20 +92,25 @@ If something goes wrong, delete the `/files/your-site` folder and re-run the scr
 - [x] Automatic cleanup of leftover artifacts
 - [x] Resilient error handling (never crashes)
 
+### In progress
+- [ ] Web app with UI (Next.js + shadcn/ui + SQLite) — see [PLAN.md](./PLAN.md)
+- [ ] config.json → SQLite migration script
+- [ ] Password encryption at rest (AES-256)
+
 ### Planned
-- [ ] Web app with UI (Next.js + SQLite) — see [PLAN.md](./PLAN.md)
-- [ ] Hack detection (suspicious files, PHP in uploads, modified core files)
-- [ ] Email notifications (SMTP, backup success/failure/hack alerts)
-- [ ] Backup restoration via FTP/SFTP from the UI
-- [ ] Scheduled backups via node-cron (configurable per site)
-- [ ] Docker deployment for Synology NAS
-- [ ] WP-CLI support for sites with SSH access
-- [ ] config.json → SQLite migration
+- [ ] Hack detection (suspicious files, PHP in uploads, modified core files, WP checksum verification)
+- [ ] Email notifications (SMTP, backup success/failure/hack alerts, daily digest)
+- [ ] Backup restoration via FTP/SFTP from the UI (files + DB, with rollback point)
+- [ ] Scheduled backups via node-cron (per-site cron schedule, configurable via UI)
+- [ ] Docker deployment for Synology NAS (standalone Next.js image)
+- [ ] Real-time log streaming during backup (SSE or WebSocket)
 
 ### Ideas
-- [ ] Replace Git with Restic for storage (deduplication, encryption, retention)
+- [ ] Replace Git with Restic for storage (deduplication, encryption, retention policies)
 - [ ] Discord/Slack webhook notifications
-- [ ] Daily digest email
-- [ ] WordPress core checksum verification (api.wordpress.org)
-- [ ] Drupal support
+- [ ] WP-CLI support for sites with SSH access (`wp db export`)
+- [ ] Prestashop / Drupal support (CMS-specific dump scripts)
+- [ ] Diff viewer for changed files between backups
+- [ ] Backup size tracking and storage alerts
+- [ ] Project rename to `site-backup-manager` (CMS-agnostic)
 
