@@ -17,6 +17,7 @@ config.filesPath = __dirname + '/files/';
 const args = process.argv.slice(2).filter(a => !a.startsWith('--'));
 const fullDownload = process.argv.includes('--full');
 const runAll = process.argv.includes('--all');
+const skipGit = process.argv.includes('--no-git');
 
 // Determine which sites to backup
 let domains;
@@ -38,18 +39,18 @@ for (const domain of domains) {
 }
 
 console.log(`\n=== Backup started — ${new Date().toLocaleString()} ===`);
-console.log(`Sites: ${domains.join(', ')}${fullDownload ? ' (full download)' : ''}\n`);
+console.log(`Sites: ${domains.join(', ')}${fullDownload ? ' (full download)' : ''}${skipGit ? ' (no git)' : ''}\n`);
 
 const startTime = Date.now();
 let results;
 
 if (domains.length === 1) {
     // Single site: run directly with console output
-    const result = await backupSite(domains[0], config, { basePath: __dirname, fullDownload });
+    const result = await backupSite(domains[0], config, { basePath: __dirname, fullDownload, skipGit });
     results = [result];
 } else {
     // Multiple sites: run in parallel (logs print in real-time with [domain] prefix)
-    results = await backupMultiple(domains, config, { basePath: __dirname, fullDownload, concurrency: 3 });
+    results = await backupMultiple(domains, config, { basePath: __dirname, fullDownload, skipGit, concurrency: 3 });
 }
 
 // Summary
