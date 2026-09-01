@@ -1,7 +1,7 @@
 import { getAllSites } from '@/lib/db';
-import { StatusBadge } from '@/components/StatusBadge';
+import { RunBackupButton } from '@/components/BackupActions';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
     Table,
     TableBody,
@@ -66,7 +66,8 @@ export default function SitesPage() {
                                                 : <Badge variant="secondary">Disabled</Badge>
                                             }
                                         </TableCell>
-                                        <TableCell className="text-right">
+                                        <TableCell className="text-right space-x-2">
+                                            <RunBackupButton siteId={site.id} domain={site.domain} />
                                             <Link href={`/sites/${site.id}`}>
                                                 <Button variant="ghost" size="sm">Edit</Button>
                                             </Link>
