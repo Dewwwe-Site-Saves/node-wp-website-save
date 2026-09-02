@@ -99,16 +99,17 @@ export function BackupHistory({ backups, showDomain = true, siteId }: { backups:
 
     return (
         <>
+            <div className="overflow-x-auto">
             <Table>
                 <TableHeader>
                     <TableRow>
                         {showDomain && <TableHead>Site</TableHead>}
                         <TableHead>Status</TableHead>
                         <TableHead>Date</TableHead>
-                        <TableHead>Duration</TableHead>
-                        <TableHead>Options</TableHead>
-                        <TableHead>Files (updated / total)</TableHead>
-                        <TableHead>Dump</TableHead>
+                        <TableHead className="hidden sm:table-cell">Duration</TableHead>
+                        <TableHead className="hidden lg:table-cell">Options</TableHead>
+                        <TableHead className="hidden sm:table-cell">Files</TableHead>
+                        <TableHead className="hidden lg:table-cell">Dump</TableHead>
                         <TableHead>Commit</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -121,10 +122,10 @@ export function BackupHistory({ backups, showDomain = true, siteId }: { backups:
                                 <Badge variant="outline" className="animate-pulse border-primary text-primary">RUNNING</Badge>
                             </TableCell>
                             <TableCell className="text-muted-foreground">Now</TableCell>
-                            <TableCell className="text-muted-foreground">-</TableCell>
-                            <TableCell className="text-muted-foreground">-</TableCell>
-                            <TableCell className="text-muted-foreground">-</TableCell>
-                            <TableCell className="text-muted-foreground">-</TableCell>
+                            <TableCell className="hidden sm:table-cell text-muted-foreground">-</TableCell>
+                            <TableCell className="hidden lg:table-cell text-muted-foreground">-</TableCell>
+                            <TableCell className="hidden sm:table-cell text-muted-foreground">-</TableCell>
+                            <TableCell className="hidden lg:table-cell text-muted-foreground">-</TableCell>
                             <TableCell className="text-muted-foreground">-</TableCell>
                         </TableRow>
                     ))}
@@ -141,18 +142,18 @@ export function BackupHistory({ backups, showDomain = true, siteId }: { backups:
                             <TableCell className="text-muted-foreground">
                                 {new Date(backup.started_at).toLocaleString()}
                             </TableCell>
-                            <TableCell className="text-muted-foreground">
+                            <TableCell className="hidden sm:table-cell text-muted-foreground">
                                 {backup.duration_ms ? formatDuration(backup.duration_ms) : '-'}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="hidden lg:table-cell">
                                 <OptionsCell options={backup.options} />
                             </TableCell>
-                            <TableCell className="text-muted-foreground">
+                            <TableCell className="hidden sm:table-cell text-muted-foreground">
                                 {backup.files_downloaded != null
                                     ? `${backup.files_downloaded} / ${(backup.files_downloaded || 0) + (backup.files_unchanged || 0)}`
                                     : '-'}
                             </TableCell>
-                            <TableCell className="text-muted-foreground">
+                            <TableCell className="hidden lg:table-cell text-muted-foreground">
                                 {backup.dump_size_bytes ? formatSize(backup.dump_size_bytes) : '-'}
                             </TableCell>
                             <TableCell className="font-mono text-xs text-muted-foreground">
@@ -162,6 +163,7 @@ export function BackupHistory({ backups, showDomain = true, siteId }: { backups:
                     ))}
                 </TableBody>
             </Table>
+            </div>
 
             {modal && modal.mode === 'live' && modal.jobId && (
                 <LogModal mode="live" jobId={modal.jobId} domain={modal.domain} siteId={modal.siteId}

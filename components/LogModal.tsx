@@ -48,9 +48,9 @@ type LogModalProps = RunModeProps | LiveModeProps | HistoryModeProps;
 
 export function LogModal(props: LogModalProps) {
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={props.onClose}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4" onClick={props.onClose}>
             <div className="absolute inset-0 bg-black/50" />
-            <div className="relative w-full max-w-3xl max-h-[80vh] flex flex-col rounded-lg border bg-card shadow-lg overflow-hidden text-left"
+            <div className="relative w-full max-w-3xl max-h-[90vh] sm:max-h-[80vh] flex flex-col rounded-lg border bg-card shadow-lg overflow-hidden text-left"
                 onClick={e => e.stopPropagation()}>
                 {props.mode === 'run' && <RunContent {...props} />}
                 {props.mode === 'live' && <LiveContent {...props} />}

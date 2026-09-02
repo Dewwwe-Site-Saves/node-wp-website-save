@@ -40,7 +40,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                         </a>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid grid-cols-2 gap-y-3 gap-x-8 text-sm">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-8 text-sm">
                             <div>
                                 <span className="text-muted-foreground">Protocol</span>
                                 <p className="font-medium">{site.protocol.toUpperCase()}</p>

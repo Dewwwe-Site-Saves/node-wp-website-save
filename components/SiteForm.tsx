@@ -110,7 +110,7 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
                     <CardHeader>
                         <CardTitle className="text-base">Site information</CardTitle>
                     </CardHeader>
-                    <CardContent className="grid grid-cols-2 gap-4">
+                    <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label htmlFor="domain">Domain</Label>
                             <Input id="domain" value={form.domain} onChange={e => update('domain', e.target.value)}
@@ -133,7 +133,7 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
                     <CardHeader>
                         <CardTitle className="text-base">Connection</CardTitle>
                     </CardHeader>
-                    <CardContent className="grid grid-cols-2 gap-4">
+                    <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label htmlFor="protocol">Protocol</Label>
                             <select id="protocol" value={form.protocol} onChange={e => update('protocol', e.target.value)}
