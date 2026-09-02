@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatusBadge } from '@/components/StatusBadge';
 import { RunningBadge } from '@/components/DashboardLive';
@@ -24,22 +25,24 @@ export function SiteCard({ site }: SiteCardProps) {
         : '-';
 
     return (
-        <Card className="border-l-4" style={{ borderLeftColor: statusColor(site.last_status) }}>
-            <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">{site.domain}</CardTitle>
-                    <div className="flex gap-2">
-                        <RunningBadge siteId={site.id} />
-                        <StatusBadge status={site.last_status} />
+        <Link href={`/sites/${site.id}`} className="no-underline">
+            <Card className="border-l-4 hover:bg-muted/50 transition-colors cursor-pointer" style={{ borderLeftColor: statusColor(site.last_status) }}>
+                <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                        <CardTitle className="text-base">{site.domain}</CardTitle>
+                        <div className="flex gap-2">
+                            <RunningBadge siteId={site.id} />
+                            <StatusBadge status={site.last_status} />
+                        </div>
                     </div>
-                </div>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground space-y-1">
-                <div>Last backup: {lastBackup}</div>
-                <div>Duration: {duration}</div>
-                <div>Protocol: {site.protocol.toUpperCase()}</div>
-            </CardContent>
-        </Card>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground space-y-1">
+                    <div>Last backup: {lastBackup}</div>
+                    <div>Duration: {duration}</div>
+                    <div>Protocol: {site.protocol.toUpperCase()}</div>
+                </CardContent>
+            </Card>
+        </Link>
     );
 }
 
