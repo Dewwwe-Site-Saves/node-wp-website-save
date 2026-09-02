@@ -30,12 +30,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         skipGit: !!body.skipGit,
     });
 
-    // Wait briefly for the job to start and get a backupId
-    await new Promise(r => setTimeout(r, 200));
+    // Wait for the job to start and get its backupId (with timeout)
+    const backupId = await Promise.race([
+        job.started,
+        new Promise(r => setTimeout(() => r(null), 5000)),
+    ]);
 
     return NextResponse.json({
         jobId: job.id,
-        backupId: job.backupId,
+        backupId,
         domain: job.domain,
         status: job.status,
     });

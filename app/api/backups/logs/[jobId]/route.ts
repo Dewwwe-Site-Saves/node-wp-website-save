@@ -24,7 +24,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
             }
 
             // If already done, close
-            if (job.status === 'complete' || job.status === 'error') {
+            if (job.status === 'complete' || job.status === 'error' || job.status === 'cancelled') {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', status: job.status })}\n\n`));
                 controller.close();
                 return;
@@ -43,7 +43,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
                 controller.close();
             }
 
+            let cleaned = false;
             function cleanup() {
+                if (cleaned) return;
+                cleaned = true;
                 backupQueue.removeListener('log', onLog);
                 backupQueue.removeListener('done', onDone);
             }
@@ -51,7 +54,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
             backupQueue.on('log', onLog);
             backupQueue.on('done', onDone);
 
-            request.signal.addEventListener('abort', cleanup);
+            request.signal.addEventListener('abort', () => {
+                cleanup();
+                try { controller.close(); } catch { /* already closed */ }
+            });
         },
     });
 
