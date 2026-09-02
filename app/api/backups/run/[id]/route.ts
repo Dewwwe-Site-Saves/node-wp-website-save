@@ -22,10 +22,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         return NextResponse.json({ error: 'Backup already running for this site' }, { status: 409 });
     }
 
-    const job = backupQueue.enqueue(siteId, basePath);
+    let body: any = {};
+    try { body = await request.json(); } catch { /* no body */ }
+
+    const job = backupQueue.enqueue(siteId, basePath, {
+        fullDownload: !!body.fullDownload,
+        skipGit: !!body.skipGit,
+    });
+
+    // Wait briefly for the job to start and get a backupId
+    await new Promise(r => setTimeout(r, 200));
 
     return NextResponse.json({
         jobId: job.id,
+        backupId: job.backupId,
         domain: job.domain,
         status: job.status,
     });

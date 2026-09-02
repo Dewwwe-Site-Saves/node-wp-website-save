@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { SidebarStatus } from '@/components/SidebarStatus';
 import './globals.css';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -34,7 +35,7 @@ function Sidebar() {
             <div className="px-5 py-5 border-b border-slate-700">
                 <h2 className="text-base font-semibold">WP Backup Manager</h2>
             </div>
-            <div className="flex flex-col gap-0.5 mt-2 px-2">
+            <div className="flex flex-col gap-0.5 mt-2 px-2 flex-1">
                 {links.map(link => {
                     const isActive = link.href === '/'
                         ? pathname === '/'
@@ -54,6 +55,9 @@ function Sidebar() {
                         </Link>
                     );
                 })}
+            </div>
+            <div className="pb-4">
+                <SidebarStatus />
             </div>
         </nav>
     );

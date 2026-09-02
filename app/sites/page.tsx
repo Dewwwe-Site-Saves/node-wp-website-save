@@ -1,16 +1,7 @@
 import { getAllSites } from '@/lib/db';
-import { RunBackupButton } from '@/components/BackupActions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { SitesTable } from '@/components/SitesTable';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -38,44 +29,7 @@ export default function SitesPage() {
                             <Link href="/sites/new" className="text-primary hover:underline">Add your first site</Link>
                         </div>
                     ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Domain</TableHead>
-                                    <TableHead>Host</TableHead>
-                                    <TableHead>Protocol</TableHead>
-                                    <TableHead>Repo</TableHead>
-                                    <TableHead>Schedule</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {sites.map((site: any) => (
-                                    <TableRow key={site.id}>
-                                        <TableCell className="font-medium">{site.domain}</TableCell>
-                                        <TableCell className="text-muted-foreground">{site.host}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline">{site.protocol.toUpperCase()}</Badge>
-                                        </TableCell>
-                                        <TableCell className="text-muted-foreground">{site.repo}</TableCell>
-                                        <TableCell className="text-muted-foreground font-mono text-xs">{site.cron_schedule}</TableCell>
-                                        <TableCell>
-                                            {site.enabled
-                                                ? <Badge variant="default">Active</Badge>
-                                                : <Badge variant="secondary">Disabled</Badge>
-                                            }
-                                        </TableCell>
-                                        <TableCell className="text-right space-x-2">
-                                            <RunBackupButton siteId={site.id} domain={site.domain} />
-                                            <Link href={`/sites/${site.id}`}>
-                                                <Button variant="ghost" size="sm">Edit</Button>
-                                            </Link>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                        <SitesTable sites={sites} />
                     )}
                 </CardContent>
             </Card>

@@ -1,12 +1,9 @@
 import { getSiteById, getBackups } from '@/lib/db';
 import { notFound } from 'next/navigation';
-import { StatusBadge } from '@/components/StatusBadge';
 import { RunBackupButton } from '@/components/BackupActions';
+import { BackupHistory } from '@/components/BackupHistory';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
 import { SiteDetailActions } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -88,56 +85,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                                 No backups yet. Click "Run Backup" to start.
                             </div>
                         ) : (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead>Duration</TableHead>
-                                        <TableHead>Files</TableHead>
-                                        <TableHead>Dump</TableHead>
-                                        <TableHead>Commit</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {backups.map((backup: any) => (
-                                        <TableRow key={backup.id}>
-                                            <TableCell><StatusBadge status={backup.status} /></TableCell>
-                                            <TableCell className="text-muted-foreground">
-                                                {new Date(backup.started_at).toLocaleString()}
-                                            </TableCell>
-                                            <TableCell className="text-muted-foreground">
-                                                {backup.duration_ms ? formatDuration(backup.duration_ms) : '-'}
-                                            </TableCell>
-                                            <TableCell className="text-muted-foreground">
-                                                {backup.files_downloaded != null ? backup.files_downloaded : '-'}
-                                            </TableCell>
-                                            <TableCell className="text-muted-foreground">
-                                                {backup.dump_size_bytes ? formatSize(backup.dump_size_bytes) : '-'}
-                                            </TableCell>
-                                            <TableCell className="font-mono text-xs text-muted-foreground">
-                                                {backup.commit_sha || '-'}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                            <BackupHistory backups={backups} showDomain={false} siteId={site.id} />
                         )}
                     </CardContent>
                 </Card>
             </div>
         </div>
     );
-}
-
-function formatDuration(ms: number): string {
-    const secs = Math.round(ms / 1000);
-    if (secs < 60) return `${secs}s`;
-    return `${Math.floor(secs / 60)}m ${secs % 60}s`;
-}
-
-function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

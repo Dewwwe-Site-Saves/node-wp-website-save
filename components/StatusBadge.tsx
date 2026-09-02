@@ -11,6 +11,7 @@ export function StatusBadge({ status }: StatusBadgeProps) {
 
     const variant = status === 'success' ? 'default'
         : status === 'error' ? 'destructive'
+        : status === 'cancelled' ? 'outline'
         : 'secondary';
 
     return (

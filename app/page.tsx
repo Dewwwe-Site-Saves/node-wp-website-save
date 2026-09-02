@@ -1,7 +1,6 @@
 import { getLastBackupPerSite } from '@/lib/db';
 import { SiteCard } from '@/components/SiteCard';
 import { RunAllButton } from '@/components/BackupActions';
-import { DashboardLive } from '@/components/DashboardLive';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +8,7 @@ export default function Dashboard() {
     const sites = getLastBackupPerSite();
 
     return (
-        <DashboardLive>
+        <div>
             <div className="flex items-center justify-between mb-6">
                 <div>
                     <h1 className="text-2xl font-bold">Dashboard</h1>
@@ -30,6 +29,6 @@ export default function Dashboard() {
                     ))}
                 </div>
             )}
-        </DashboardLive>
+        </div>
     );
 }

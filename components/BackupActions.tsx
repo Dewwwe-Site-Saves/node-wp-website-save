@@ -1,76 +1,61 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { LiveLog } from '@/components/LiveLog';
-import { LogPanel } from '@/components/LogPanel';
-import { useState } from 'react';
+import { LogModal } from '@/components/LogModal';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-interface RunningJob {
-    jobId: number;
-    domain: string;
-}
-
 export function RunBackupButton({ siteId, domain, size = 'sm' }: { siteId: number; domain?: string; size?: 'sm' | 'default' }) {
-    const [job, setJob] = useState<RunningJob | null>(null);
+    const [showModal, setShowModal] = useState(false);
     const router = useRouter();
-
-    async function handleRun() {
-        try {
-            const res = await fetch(`/api/backups/run/${siteId}`, { method: 'POST' });
-            const data = await res.json();
-            if (data.jobId) {
-                setJob({ jobId: data.jobId, domain: data.domain });
-            }
-        } catch (error) {
-            console.error('Failed to start backup:', error);
-        }
-    }
 
     return (
         <>
-            <Button variant="outline" size={size} onClick={handleRun} disabled={!!job}>
-                {job ? 'Running...' : 'Run Backup'}
+            <Button variant="outline" size={size} onClick={() => setShowModal(true)}>
+                Run Backup
             </Button>
-            {job && (
-                <LogPanel onClose={() => { setJob(null); router.refresh(); }}>
-                    <LiveLog jobId={job.jobId} domain={job.domain} />
-                </LogPanel>
+            {showModal && (
+                <LogModal mode="run" siteId={siteId} domain={domain || `Site #${siteId}`}
+                    onClose={() => { setShowModal(false); router.refresh(); }} />
             )}
         </>
     );
 }
 
 export function RunAllButton() {
-    const [jobs, setJobs] = useState<RunningJob[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [isRunning, setIsRunning] = useState(false);
     const router = useRouter();
 
+    useEffect(() => {
+        if (!isRunning) return;
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch('/api/backups/status');
+                const data = await res.json();
+                if (data.running.length === 0 && data.pending.length === 0) {
+                    setIsRunning(false);
+                    setLoading(false);
+                    router.refresh();
+                }
+            } catch { /* ignore */ }
+        }, 3000);
+        return () => clearInterval(interval);
+    }, [isRunning]);
+
     async function handleRunAll() {
+        setLoading(true);
         try {
-            const res = await fetch('/api/backups/run', { method: 'POST' });
-            const data = await res.json();
-            if (data.jobs?.length > 0) {
-                setJobs(data.jobs.map((j: any) => ({ jobId: j.jobId, domain: j.domain })));
-            }
-        } catch (error) {
-            console.error('Failed to start backups:', error);
+            await fetch('/api/backups/run', { method: 'POST' });
+            setIsRunning(true);
+        } catch {
+            setLoading(false);
         }
     }
 
     return (
-        <>
-            <Button onClick={handleRunAll} disabled={jobs.length > 0}>
-                {jobs.length > 0 ? 'Running...' : 'Backup All'}
-            </Button>
-            {jobs.length > 0 && (
-                <LogPanel onClose={() => { setJobs([]); router.refresh(); }}>
-                    <div className="space-y-4">
-                        {jobs.map(job => (
-                            <LiveLog key={job.jobId} jobId={job.jobId} domain={job.domain} />
-                        ))}
-                    </div>
-                </LogPanel>
-            )}
-        </>
+        <Button onClick={handleRunAll} disabled={loading}>
+            {loading ? 'Running...' : 'Backup All'}
+        </Button>
     );
 }
