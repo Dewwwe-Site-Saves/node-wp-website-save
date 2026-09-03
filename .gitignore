@@ -1,6 +1,9 @@
 .DS_Store
-.vscode
 node_modules
+
+# VS Code: only the shared workspace settings are versioned
+.vscode/*
+!.vscode/settings.json
 
 # Next.js / TypeScript
 .next
