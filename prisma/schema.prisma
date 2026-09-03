@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String
+  role         String    @default("admin") // admin | viewer (viewer unused until multi-user)
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+}
+
+model Site {
+  id           Int      @id @default(autoincrement())
+  domain       String   @unique // hostname, validated
+  repo         String   @unique // local folder name, ^[A-Za-z0-9._-]+$
+  repoUrl      String // https://github.com/<owner>/<repo>.git only
+  protocol     String   @default("ftp") // ftp | sftp
+  host         String
+  port         Int
+  username     String
+  passwordEnc  String // enc:v1:<iv>:<tag>:<ciphertext>
+  webRootPath  String   @default("www")
+  spListItemId String?
+  cronSchedule String? // null = use Settings.defaultCron
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  backups      Backup[]
+}
+
+model Backup {
+  id              Int       @id @default(autoincrement())
+  site            Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  siteId          Int
+  status          String    @default("pending") // pending | running | success | error | cancelled
+  triggerType     String    @default("manual") // manual | scheduled
+  fullDownload    Boolean   @default(false)
+  skipGit         Boolean   @default(false)
+  queuedAt        DateTime  @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  durationMs      Int?
+  filesDownloaded Int?
+  filesUnchanged  Int?
+  filesDeleted    Int?
+  dumpSizeBytes   Int?
+  commitSha       String?
+  tag             String?
+  releaseUrl      String?
+  errorMessage    String?
+  log             String?
+
+  @@index([siteId, queuedAt(sort: Desc)])
+  @@index([status])
+}
+
+// Singleton row, id = 1
+model Settings {
+  id               Int      @id @default(1)
+  githubEmail      String? // commit author email
+  githubTokenEnc   String? // fine-grained PAT: Contents read/write, Metadata read
+  spTenantId       String?
+  spClientId       String?
+  spCertThumbprint String?
+  spTenantName     String?
+  spSiteName       String?
+  spListName       String?
+  spDateField      String?
+  defaultCron      String   @default("0 3 * * *")
+  concurrency      Int      @default(2)
+  retentionDays    Int      @default(90) // prune Backup rows older than this
+  updatedAt        DateTime @updatedAt
+}

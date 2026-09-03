@@ -13,11 +13,13 @@ app/                    UI pages + API route handlers (thin: validate, call serv
   login/, setup/        Auth pages (setup only when no user exists yet)
   api/                  See "API" below
 lib/
-  paths.ts              DATA_DIR resolution (db, files, certificates)
+  paths.ts              DATA_DIR resolution (db, files, certificates), as functions
   crypto.ts             AES-256-GCM for secrets at rest
   auth.ts               Password hashing, session cookie (signed JWT), current user helper
   validation.ts         zod schemas shared by API routes and forms
-  db.ts                 Prisma client singleton (better-sqlite3 driver adapter)
+  prisma.ts             Prisma client singleton (better-sqlite3 driver adapter) + pragmas
+  db.ts                 Typed queries used by routes and jobs (decrypted configs, pagination)
+  generated/prisma/     Generated client (gitignored, `prisma generate` on postinstall)
   engine/               Backup engine. Pure TypeScript, no Next.js import, no DB import.
     types.ts            SiteConfig, GithubConfig, BackupOptions, BackupResult, Logger
     logger.ts
@@ -163,7 +165,6 @@ model Backup {
 
 model Settings {                            // singleton, id = 1
   id                 Int     @id @default(1)
-  githubOwner        String?               // org or user that owns the backup repos
   githubEmail        String?               // commit author email
   githubTokenEnc     String?               // fine-grained PAT: Contents read/write, Metadata read
   spTenantId         String?
@@ -180,15 +181,24 @@ model Settings {                            // singleton, id = 1
 }
 ```
 
+Delivered in two steps:
+- **1a** — schema, `prisma.config.ts`, `lib/prisma.ts`, `lib/crypto.ts`, `lib/validation.ts`,
+  `lib/engine/types.ts` (config contracts), `scripts/import-config.ts`, unit tests. The v1
+  `lib/db.js` and its consumers are untouched, the app still runs on the old database file.
+- **1b** — `lib/db.ts` replaces `lib/db.js`; routes, pages, components and `lib/queue.js`
+  move to the Prisma models (camelCase fields, zod on every body). The app runs on Prisma.
+
 Notes:
+- No `githubOwner` setting: owner and repo are parsed from each site's `repoUrl`.
 - `hackAlert` / `hackDetails` are **not** created now. They arrive with the hack-detection
   feature through their own migration. No orphan columns.
 - `options` JSON string replaced by explicit `fullDownload` / `skipGit` columns.
 - All timestamps are `DateTime` (Prisma stores ISO 8601 UTC), which fixes the mixed
   `CURRENT_TIMESTAMP` vs ISO formats.
-- `lib/db.ts` exports `prisma` and typed helpers used by routes and jobs
-  (`getSiteConfig(id)` returns the decrypted `SiteConfig` for the engine,
-  `getGithubConfig()` the decrypted token).
+- `lib/prisma.ts` exports the client and `initDatabase()` (WAL + foreign keys pragmas).
+  `lib/db.ts` exports typed helpers used by routes and jobs (`getSiteConfig(id)` returns the
+  decrypted `SiteConfig` for the engine, `getGithubConfig()` the decrypted token,
+  `getSettings()` the singleton row created on first access).
 - `scripts/import-config.ts`: reads the legacy `config.json`, encrypts passwords, inserts
   sites and settings, rewrites `repoUrl` values to plain HTTPS. Run once by hand, then
   `config.json` is deleted.

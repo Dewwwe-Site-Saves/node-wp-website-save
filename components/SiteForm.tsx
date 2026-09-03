@@ -2,53 +2,70 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import type { SiteSummary } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-interface SiteData {
-    id?: number;
+const DEFAULT_CRON = '0 3 * * *';
+
+interface SiteFormValues {
     domain: string;
     repo: string;
-    repo_url: string;
-    protocol: string;
+    repoUrl: string;
+    protocol: 'ftp' | 'sftp';
     host: string;
     port: number;
     username: string;
     password: string;
-    web_root_path: string;
-    ssh_key_path: string;
-    sp_list_item_id: string;
-    cron_schedule: string;
-    enabled: number | boolean;
+    webRootPath: string;
+    spListItemId: string;
+    cronSchedule: string;
+    enabled: boolean;
 }
 
-const defaults: SiteData = {
+const defaults: SiteFormValues = {
     domain: '',
     repo: '',
-    repo_url: '',
+    repoUrl: '',
     protocol: 'ftp',
     host: '',
     port: 21,
     username: '',
     password: '',
-    web_root_path: 'www',
-    ssh_key_path: '',
-    sp_list_item_id: '',
-    cron_schedule: '0 3 * * *',
+    webRootPath: 'www',
+    spListItemId: '',
+    cronSchedule: DEFAULT_CRON,
     enabled: true,
 };
 
-export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'create' | 'edit' }) {
+function toFormValues(site: SiteSummary): SiteFormValues {
+    return {
+        domain: site.domain,
+        repo: site.repo,
+        repoUrl: site.repoUrl,
+        protocol: site.protocol === 'sftp' ? 'sftp' : 'ftp',
+        host: site.host,
+        port: site.port,
+        username: site.username,
+        password: '',
+        webRootPath: site.webRootPath,
+        spListItemId: site.spListItemId ?? '',
+        cronSchedule: site.cronSchedule ?? DEFAULT_CRON,
+        enabled: site.enabled,
+    };
+}
+
+export function SiteForm({ site, mode = 'create' }: { site?: SiteSummary; mode?: 'create' | 'edit' }) {
     const router = useRouter();
-    const [form, setForm] = useState<SiteData>({ ...defaults, ...site });
-    const [useGlobalSchedule, setUseGlobalSchedule] = useState(form.cron_schedule === '0 3 * * *');
+    const [form, setForm] = useState<SiteFormValues>(site ? toFormValues(site) : defaults);
+    const [useGlobalSchedule, setUseGlobalSchedule] = useState(!site?.cronSchedule);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
 
-    function update(field: string, value: any) {
+    function update<K extends keyof SiteFormValues>(field: K, value: SiteFormValues[K]) {
         setForm(prev => {
             const updated = { ...prev, [field]: value };
             // Auto-switch port when protocol changes
@@ -66,8 +83,8 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
 
         const payload = {
             ...form,
-            cron_schedule: useGlobalSchedule ? '0 3 * * *' : form.cron_schedule,
-            enabled: form.enabled ? 1 : 0,
+            spListItemId: form.spListItemId || null,
+            cronSchedule: useGlobalSchedule ? null : form.cronSchedule,
         };
 
         try {
@@ -88,8 +105,7 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
                 return;
             }
 
-            const redirectId = mode === 'create' ? data.id : site?.id;
-            router.push(`/sites/${redirectId}`);
+            router.push(`/sites/${data.id}`);
             router.refresh();
         } catch {
             setError('Failed to save site');
@@ -122,9 +138,9 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
                                 placeholder="mysite" required />
                         </div>
                         <div className="col-span-2 space-y-2">
-                            <Label htmlFor="repo_url">Repository URL</Label>
-                            <Input id="repo_url" value={form.repo_url} onChange={e => update('repo_url', e.target.value)}
-                                placeholder="git@github.com:org/repo.git" required />
+                            <Label htmlFor="repoUrl">Repository URL</Label>
+                            <Input id="repoUrl" value={form.repoUrl} onChange={e => update('repoUrl', e.target.value)}
+                                placeholder="https://github.com/org/repo.git" required />
                         </div>
                     </CardContent>
                 </Card>
@@ -136,7 +152,7 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
                     <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label htmlFor="protocol">Protocol</Label>
-                            <select id="protocol" value={form.protocol} onChange={e => update('protocol', e.target.value)}
+                            <select id="protocol" value={form.protocol} onChange={e => update('protocol', e.target.value === 'sftp' ? 'sftp' : 'ftp')}
                                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                                 <option value="ftp">FTP</option>
                                 <option value="sftp">SFTP</option>
@@ -149,11 +165,12 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="port">Port</Label>
-                            <Input id="port" type="number" value={form.port} onChange={e => update('port', parseInt(e.target.value) || 21)} />
+                            <Input id="port" type="number" min={1} max={65535} value={form.port}
+                                onChange={e => update('port', parseInt(e.target.value) || 0)} required />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="web_root_path">Web root path</Label>
-                            <Input id="web_root_path" value={form.web_root_path} onChange={e => update('web_root_path', e.target.value)}
+                            <Label htmlFor="webRootPath">Web root path</Label>
+                            <Input id="webRootPath" value={form.webRootPath} onChange={e => update('webRootPath', e.target.value)}
                                 placeholder="www" />
                         </div>
                         <div className="space-y-2">
@@ -179,7 +196,7 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
                         <div className="flex items-center justify-between">
                             <div>
                                 <Label>Backup schedule</Label>
-                                <p className="text-sm text-muted-foreground">Use the global schedule (daily at 3 AM) or set a custom one</p>
+                                <p className="text-sm text-muted-foreground">Use the global schedule or set a custom one</p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Label htmlFor="global-schedule" className="text-sm">Global</Label>
@@ -190,10 +207,10 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
                         </div>
                         {!useGlobalSchedule && (
                             <div className="space-y-2">
-                                <Label htmlFor="cron_schedule">Cron expression</Label>
-                                <Input id="cron_schedule" value={form.cron_schedule}
-                                    onChange={e => update('cron_schedule', e.target.value)}
-                                    placeholder="0 3 * * *" className="font-mono" />
+                                <Label htmlFor="cronSchedule">Cron expression</Label>
+                                <Input id="cronSchedule" value={form.cronSchedule}
+                                    onChange={e => update('cronSchedule', e.target.value)}
+                                    placeholder={DEFAULT_CRON} className="font-mono" />
                                 <p className="text-xs text-muted-foreground">Example: 0 3 * * * = daily at 3 AM, 0 */6 * * * = every 6 hours</p>
                             </div>
                         )}
@@ -203,8 +220,8 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
                                 <Label>SharePoint list item ID</Label>
                                 <p className="text-sm text-muted-foreground">Optional — for SharePoint list update after backup</p>
                             </div>
-                            <Input className="w-24" value={form.sp_list_item_id}
-                                onChange={e => update('sp_list_item_id', e.target.value)}
+                            <Input className="w-24" value={form.spListItemId}
+                                onChange={e => update('spListItemId', e.target.value)}
                                 placeholder="—" />
                         </div>
 
@@ -213,7 +230,7 @@ export function SiteForm({ site, mode = 'create' }: { site?: SiteData; mode?: 'c
                                 <Label>Enabled</Label>
                                 <p className="text-sm text-muted-foreground">Disabled sites are skipped during scheduled backups</p>
                             </div>
-                            <Switch checked={!!form.enabled} onCheckedChange={(checked) => update('enabled', checked)} />
+                            <Switch checked={form.enabled} onCheckedChange={(checked) => update('enabled', checked)} />
                         </div>
                     </CardContent>
                 </Card>

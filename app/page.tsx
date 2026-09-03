@@ -1,11 +1,12 @@
-import { getLastBackupPerSite } from '@/lib/db';
+import { listSitesWithLastBackup } from '@/lib/db';
 import { SiteCard } from '@/components/SiteCard';
 import { RunAllButton } from '@/components/BackupActions';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-export default function Dashboard() {
-    const sites = getLastBackupPerSite();
+export default async function Dashboard() {
+    const sites = await listSitesWithLastBackup();
 
     return (
         <div>
@@ -20,11 +21,11 @@ export default function Dashboard() {
             {sites.length === 0 ? (
                 <div className="text-center py-16 text-muted-foreground">
                     <p>No sites configured yet.</p>
-                    <a href="/sites/new" className="text-primary hover:underline">Add your first site</a>
+                    <Link href="/sites/new" className="text-primary hover:underline">Add your first site</Link>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {sites.map((site: any) => (
+                    {sites.map(site => (
                         <SiteCard key={site.id} site={site} />
                     ))}
                 </div>

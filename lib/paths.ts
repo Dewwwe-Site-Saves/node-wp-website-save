@@ -6,21 +6,43 @@ import path from 'node:path';
  * Set with the DATA_DIR env var (absolute path recommended in Docker). Defaults to ./data
  * relative to the working directory, never to the source tree, so the standalone build
  * behaves the same as `next dev`.
+ *
+ * Exposed as functions, not constants: the value is read when called, so callers that load
+ * a .env file at startup (Prisma CLI, tsx scripts) get the right directory regardless of
+ * import order.
  */
-export const DATA_DIR = path.resolve(process.env.DATA_DIR ?? path.join(process.cwd(), 'data'));
+export function dataDir(): string {
+    return path.resolve(process.env.DATA_DIR ?? path.join(process.cwd(), 'data'));
+}
 
 /** Local git clones of the backup repositories, one folder per site (`<repo>`). */
-export const FILES_DIR = path.join(DATA_DIR, 'files');
+export function filesDir(): string {
+    return path.join(dataDir(), 'files');
+}
 
 /** SQLite database file. */
-export const DB_PATH = path.join(DATA_DIR, 'backup.db');
+export function dbPath(): string {
+    return path.join(dataDir(), 'backup.db');
+}
 
-/** SharePoint app-only certificate (`key.pem`). */
-export const SP_CERT_DIR = path.join(DATA_DIR, 'sp-certificates');
+/**
+ * Database URL for Prisma (CLI, Studio and the better-sqlite3 adapter).
+ * The `file://` form with an absolute path is the one every Prisma tool parses the same way:
+ * Studio identifies the protocol on `://`, and the adapter strips `file:` and hands the
+ * remaining `///abs/path` to SQLite, which collapses the leading slashes.
+ */
+export function dbUrl(): string {
+    return `file://${dbPath()}`;
+}
+
+/** SharePoint app-only certificate directory (`key.pem`). */
+export function spCertDir(): string {
+    return path.join(dataDir(), 'sp-certificates');
+}
 
 /** Creates the data directories if they do not exist. Called once at boot. */
 export function ensureDataDirs(): void {
-    for (const dir of [DATA_DIR, FILES_DIR, SP_CERT_DIR]) {
+    for (const dir of [dataDir(), filesDir(), spCertDir()]) {
         fs.mkdirSync(dir, { recursive: true });
     }
 }

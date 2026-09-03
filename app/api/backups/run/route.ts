@@ -1,26 +1,24 @@
 import { NextResponse } from 'next/server';
-import { backupQueue } from '@/lib/queue';
-import { getAllSites } from '@/lib/db';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { jsonError } from '@/lib/api';
+import { listSites } from '@/lib/db';
+import { backupQueue } from '@/lib/queue';
 
-const __filename = fileURLToPath(import.meta.url);
-const basePath = path.resolve(path.dirname(__filename), '../../../..');
+// v1 engine layout (files/ and helpers/ under the project root). Replaced by DATA_DIR in Phase 2.
+const basePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 export async function POST() {
-    const sites = getAllSites().filter((s: any) => s.enabled);
-
+    const sites = (await listSites()).filter(site => site.enabled);
     if (sites.length === 0) {
-        return NextResponse.json({ error: 'No active sites' }, { status: 400 });
+        return jsonError(400, 'No active sites');
     }
 
     const jobs = [];
     for (const site of sites) {
-        // Skip if already running
-        const running = backupQueue.getRunningJobs();
-        if (running.some(j => j.siteId === site.id)) continue;
+        if (backupQueue.getRunningJobs().some(j => j.siteId === site.id)) continue;
 
-        const job = backupQueue.enqueue(site.id, basePath);
+        const job = await backupQueue.enqueue(site.id, basePath);
         jobs.push({ jobId: job.id, domain: job.domain, status: job.status });
     }
 

@@ -7,7 +7,13 @@
         "build": "next build",
         "start": "next start",
         "typecheck": "tsc --noEmit",
-        "test": "vitest run"
+        "test": "vitest run",
+        "postinstall": "prisma generate",
+        "db:generate": "prisma generate",
+        "db:migrate": "prisma migrate dev",
+        "db:deploy": "prisma migrate deploy",
+        "db:studio": "prisma studio",
+        "import:config": "tsx scripts/import-config.ts"
     },
     "repository": {
         "type": "git",

@@ -17,6 +17,7 @@ tsconfig.tsbuildinfo
 /files
 /sp-certificates
 /prisma/*.db*
+/lib/generated
 
 # Legacy v1 artifacts, kept ignored so an old copy never gets committed
 config.json

@@ -1,4 +1,4 @@
-import { getAllSites } from '@/lib/db';
+import { listSites } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { SitesTable } from '@/components/SitesTable';
@@ -6,8 +6,8 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-export default function SitesPage() {
-    const sites = getAllSites();
+export default async function SitesPage() {
+    const sites = await listSites();
 
     return (
         <div>

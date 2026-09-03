@@ -1,5 +1,7 @@
-import { getSiteById, getBackups } from '@/lib/db';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getSite, listBackups } from '@/lib/db';
+import { backupsQuerySchema, parseId } from '@/lib/validation';
 import { RunBackupButton } from '@/components/BackupActions';
 import { BackupHistory } from '@/components/BackupHistory';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,11 +11,11 @@ import { SiteDetailActions } from './actions';
 export const dynamic = 'force-dynamic';
 
 export default async function SiteDetailPage({ params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params;
-    const site = getSiteById(parseInt(id));
+    const id = parseId((await params).id);
+    const site = id ? await getSite(id) : null;
     if (!site) notFound();
 
-    const backups = getBackups({ siteId: site.id, limit: 20 });
+    const backups = await listBackups(backupsQuerySchema.parse({ siteId: site.id, pageSize: 20 }));
 
     return (
         <div className="max-w-4xl">
@@ -35,9 +37,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle className="text-base">Configuration</CardTitle>
-                        <a href={`/sites/${site.id}/edit`}>
-                            <span className="text-sm text-primary hover:underline cursor-pointer">Edit</span>
-                        </a>
+                        <Link href={`/sites/${site.id}/edit`} className="text-sm text-primary hover:underline">Edit</Link>
                     </CardHeader>
                     <CardContent>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-8 text-sm">
@@ -55,7 +55,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                             </div>
                             <div>
                                 <span className="text-muted-foreground">Web root</span>
-                                <p className="font-medium">{site.web_root_path}</p>
+                                <p className="font-medium">{site.webRootPath || '/'}</p>
                             </div>
                             <div>
                                 <span className="text-muted-foreground">Repository</span>
@@ -63,12 +63,12 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                             </div>
                             <div>
                                 <span className="text-muted-foreground">Schedule</span>
-                                <p className="font-medium font-mono text-xs">{site.cron_schedule}</p>
+                                <p className="font-medium font-mono text-xs">{site.cronSchedule ?? 'Global'}</p>
                             </div>
-                            {site.sp_list_item_id && (
+                            {site.spListItemId && (
                                 <div>
                                     <span className="text-muted-foreground">SharePoint ID</span>
-                                    <p className="font-medium">{site.sp_list_item_id}</p>
+                                    <p className="font-medium">{site.spListItemId}</p>
                                 </div>
                             )}
                         </div>
@@ -80,12 +80,12 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                         <CardTitle className="text-base">Backup History</CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                        {backups.length === 0 ? (
+                        {backups.items.length === 0 ? (
                             <div className="text-center py-8 text-muted-foreground text-sm">
-                                No backups yet. Click "Run Backup" to start.
+                                No backups yet. Click &quot;Run Backup&quot; to start.
                             </div>
                         ) : (
-                            <BackupHistory backups={backups} showDomain={false} siteId={site.id} />
+                            <BackupHistory backups={backups.items} showDomain={false} siteId={site.id} />
                         )}
                     </CardContent>
                 </Card>

@@ -1,13 +1,14 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import type { SiteSummary } from '@/lib/db';
 import { RunBackupButton } from '@/components/BackupActions';
 import { Badge } from '@/components/ui/badge';
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 
-export function SitesTable({ sites }: { sites: any[] }) {
+export function SitesTable({ sites }: { sites: SiteSummary[] }) {
     const router = useRouter();
 
     return (
@@ -25,7 +26,7 @@ export function SitesTable({ sites }: { sites: any[] }) {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {sites.map((site: any) => (
+                    {sites.map(site => (
                         <TableRow key={site.id} className="cursor-pointer hover:bg-muted/50"
                             onClick={() => router.push(`/sites/${site.id}`)}>
                             <TableCell className="font-medium">{site.domain}</TableCell>
@@ -34,7 +35,7 @@ export function SitesTable({ sites }: { sites: any[] }) {
                                 <Badge variant="outline">{site.protocol.toUpperCase()}</Badge>
                             </TableCell>
                             <TableCell className="hidden lg:table-cell text-muted-foreground">{site.repo}</TableCell>
-                            <TableCell className="hidden sm:table-cell text-muted-foreground font-mono text-xs">{site.cron_schedule}</TableCell>
+                            <TableCell className="hidden sm:table-cell text-muted-foreground font-mono text-xs">{site.cronSchedule ?? 'Global'}</TableCell>
                             <TableCell>
                                 {site.enabled
                                     ? <Badge variant="default">Active</Badge>

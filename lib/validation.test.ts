@@ -1,0 +1,144 @@
+import { describe, expect, it } from 'vitest';
+import {
+    backupsQuerySchema,
+    cronSchema,
+    domainSchema,
+    parseId,
+    repoNameSchema,
+    repoUrlSchema,
+    siteCreateSchema,
+    siteUpdateSchema,
+    webRootPathSchema,
+} from './validation';
+
+const validSite = {
+    domain: 'MySite.com',
+    repo: 'mysite',
+    repoUrl: 'https://github.com/org/mysite',
+    protocol: 'ftp',
+    host: 'ftp.mysite.com',
+    port: 21,
+    username: 'user',
+    password: 'pass',
+};
+
+describe('domainSchema', () => {
+    it('accepts and normalises hostnames', () => {
+        expect(domainSchema.parse(' MySite.com ')).toBe('mysite.com');
+        expect(domainSchema.parse('sub.my-site.co.uk')).toBe('sub.my-site.co.uk');
+    });
+
+    it('rejects anything that is not a bare hostname', () => {
+        for (const value of ['localhost', 'my site.com', 'https://mysite.com', 'mysite.com/', '../etc', '-bad.com']) {
+            expect(domainSchema.safeParse(value).success, value).toBe(false);
+        }
+    });
+});
+
+describe('repoNameSchema', () => {
+    it('accepts simple folder names', () => {
+        expect(repoNameSchema.parse('my-site_v2.backup')).toBe('my-site_v2.backup');
+    });
+
+    it('rejects path traversal and separators', () => {
+        for (const value of ['..', '.', 'a/b', 'a\\b', 'a b', '', 'x; rm -rf /']) {
+            expect(repoNameSchema.safeParse(value).success, value).toBe(false);
+        }
+    });
+});
+
+describe('repoUrlSchema', () => {
+    it('accepts GitHub HTTPS urls and appends .git', () => {
+        expect(repoUrlSchema.parse('https://github.com/org/repo')).toBe('https://github.com/org/repo.git');
+        expect(repoUrlSchema.parse('https://github.com/org/repo.git')).toBe('https://github.com/org/repo.git');
+    });
+
+    it('rejects ssh urls, credentials and other hosts', () => {
+        for (const value of [
+            'git@github.com:org/repo.git',
+            'https://user:token@github.com/org/repo.git',
+            'https://gitlab.com/org/repo.git',
+            'https://github.com/org',
+            'https://github.com/org/repo.git; echo pwned',
+        ]) {
+            expect(repoUrlSchema.safeParse(value).success, value).toBe(false);
+        }
+    });
+});
+
+describe('webRootPathSchema', () => {
+    it('strips surrounding slashes and allows the root', () => {
+        expect(webRootPathSchema.parse('/www/')).toBe('www');
+        expect(webRootPathSchema.parse('public_html/site')).toBe('public_html/site');
+        expect(webRootPathSchema.parse('')).toBe('');
+    });
+
+    it('rejects traversal', () => {
+        expect(webRootPathSchema.safeParse('www/../etc').success).toBe(false);
+        expect(webRootPathSchema.safeParse('./www').success).toBe(false);
+    });
+});
+
+describe('cronSchema', () => {
+    it('accepts valid expressions', () => {
+        expect(cronSchema.parse('0 3 * * *')).toBe('0 3 * * *');
+        expect(cronSchema.parse('*/15 * * * *')).toBe('*/15 * * * *');
+    });
+
+    it('rejects garbage', () => {
+        expect(cronSchema.safeParse('every day').success).toBe(false);
+        expect(cronSchema.safeParse('0 25 * * *').success).toBe(false);
+    });
+});
+
+describe('siteCreateSchema', () => {
+    it('applies defaults and normalisation', () => {
+        const site = siteCreateSchema.parse(validSite);
+        expect(site.domain).toBe('mysite.com');
+        expect(site.repoUrl).toBe('https://github.com/org/mysite.git');
+        expect(site.webRootPath).toBe('www');
+        expect(site.cronSchedule).toBeNull();
+        expect(site.spListItemId).toBeNull();
+        expect(site.enabled).toBe(true);
+    });
+
+    it('turns an empty SharePoint id into null', () => {
+        expect(siteCreateSchema.parse({ ...validSite, spListItemId: '  ' }).spListItemId).toBeNull();
+        expect(siteCreateSchema.parse({ ...validSite, spListItemId: '12' }).spListItemId).toBe('12');
+    });
+
+    it('requires a password on create but not on update', () => {
+        expect(siteCreateSchema.safeParse({ ...validSite, password: '' }).success).toBe(false);
+        expect(siteUpdateSchema.parse({ ...validSite, password: '' }).password).toBeUndefined();
+        expect(siteUpdateSchema.parse({ ...validSite, password: 'new' }).password).toBe('new');
+    });
+
+    it('validates port range and protocol', () => {
+        expect(siteCreateSchema.safeParse({ ...validSite, port: 0 }).success).toBe(false);
+        expect(siteCreateSchema.safeParse({ ...validSite, port: 70000 }).success).toBe(false);
+        expect(siteCreateSchema.safeParse({ ...validSite, protocol: 'scp' }).success).toBe(false);
+    });
+});
+
+describe('backupsQuerySchema', () => {
+    it('coerces query strings with defaults', () => {
+        expect(backupsQuerySchema.parse({})).toEqual({ page: 1, pageSize: 20 });
+        expect(backupsQuerySchema.parse({ siteId: '3', status: 'error', page: '2', pageSize: '50' })).toEqual({
+            siteId: 3, status: 'error', page: 2, pageSize: 50,
+        });
+    });
+
+    it('rejects unknown statuses and oversized pages', () => {
+        expect(backupsQuerySchema.safeParse({ status: 'done' }).success).toBe(false);
+        expect(backupsQuerySchema.safeParse({ pageSize: '500' }).success).toBe(false);
+    });
+});
+
+describe('parseId', () => {
+    it('parses positive integers only', () => {
+        expect(parseId('12')).toBe(12);
+        for (const value of ['0', '-1', '1.5', 'abc', '', 'NaN']) {
+            expect(parseId(value), value).toBeNull();
+        }
+    });
+});

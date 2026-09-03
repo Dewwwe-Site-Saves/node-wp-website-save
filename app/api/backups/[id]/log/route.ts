@@ -1,28 +1,33 @@
 import { NextResponse } from 'next/server';
-import { getBackupById } from '@/lib/db';
+import { jsonError } from '@/lib/api';
+import { getBackup } from '@/lib/db';
+import { parseId } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params;
-    const backup = getBackupById(parseInt(id));
-
-    if (!backup) {
-        return NextResponse.json({ error: 'Backup not found' }, { status: 404 });
-    }
+    const id = parseId((await params).id);
+    const backup = id ? await getBackup(id) : null;
+    if (!backup) return jsonError(404, 'Backup not found');
 
     return NextResponse.json({
         id: backup.id,
-        domain: backup.domain,
+        siteId: backup.siteId,
+        domain: backup.site.domain,
         status: backup.status,
-        started_at: backup.started_at,
-        finished_at: backup.finished_at,
-        duration_ms: backup.duration_ms,
-        files_downloaded: backup.files_downloaded,
-        files_unchanged: backup.files_unchanged,
-        dump_size_bytes: backup.dump_size_bytes,
-        commit_sha: backup.commit_sha,
-        options: backup.options,
-        log: backup.log || '',
+        triggerType: backup.triggerType,
+        fullDownload: backup.fullDownload,
+        skipGit: backup.skipGit,
+        queuedAt: backup.queuedAt,
+        startedAt: backup.startedAt,
+        finishedAt: backup.finishedAt,
+        durationMs: backup.durationMs,
+        filesDownloaded: backup.filesDownloaded,
+        filesUnchanged: backup.filesUnchanged,
+        filesDeleted: backup.filesDeleted,
+        dumpSizeBytes: backup.dumpSizeBytes,
+        commitSha: backup.commitSha,
+        errorMessage: backup.errorMessage,
+        log: backup.log ?? '',
     });
 }

@@ -1,11 +1,12 @@
-import { getBackups } from '@/lib/db';
+import { listBackups } from '@/lib/db';
+import { backupsQuerySchema } from '@/lib/validation';
 import { BackupHistory } from '@/components/BackupHistory';
 import { Card, CardContent } from '@/components/ui/card';
 
 export const dynamic = 'force-dynamic';
 
-export default function HistoryPage() {
-    const backups = getBackups({ limit: 50 });
+export default async function HistoryPage() {
+    const backups = await listBackups(backupsQuerySchema.parse({ pageSize: 50 }));
 
     return (
         <div>
@@ -16,12 +17,12 @@ export default function HistoryPage() {
 
             <Card>
                 <CardContent className="p-0">
-                    {backups.length === 0 ? (
+                    {backups.items.length === 0 ? (
                         <div className="text-center py-16 text-muted-foreground">
                             <p>No backups have been run yet.</p>
                         </div>
                     ) : (
-                        <BackupHistory backups={backups} showDomain={true} />
+                        <BackupHistory backups={backups.items} showDomain={true} />
                     )}
                 </CardContent>
             </Card>

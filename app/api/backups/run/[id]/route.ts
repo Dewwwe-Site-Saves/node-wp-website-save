@@ -1,39 +1,35 @@
 import { NextResponse } from 'next/server';
-import { backupQueue } from '@/lib/queue';
-import { getSiteById } from '@/lib/db';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { jsonError, parseBody } from '@/lib/api';
+import { getSite } from '@/lib/db';
+import { backupQueue } from '@/lib/queue';
+import { parseId, runBackupSchema } from '@/lib/validation';
 
-const __filename = fileURLToPath(import.meta.url);
-const basePath = path.resolve(path.dirname(__filename), '../../../../..');
+// v1 engine layout (files/ and helpers/ under the project root). Replaced by DATA_DIR in Phase 2.
+const basePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params;
-    const siteId = parseInt(id);
+    const id = parseId((await params).id);
+    const site = id ? await getSite(id) : null;
+    if (!site) return jsonError(404, 'Site not found');
 
-    const site = getSiteById(siteId);
-    if (!site) {
-        return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    if (backupQueue.getRunningJobs().some(j => j.siteId === site.id)) {
+        return jsonError(409, 'Backup already running for this site');
     }
 
-    // Check if already running
-    const running = backupQueue.getRunningJobs();
-    if (running.some(j => j.siteId === siteId)) {
-        return NextResponse.json({ error: 'Backup already running for this site' }, { status: 409 });
-    }
+    const { data, response } = await parseBody(request, runBackupSchema);
+    if (response) return response;
 
-    let body: any = {};
-    try { body = await request.json(); } catch { /* no body */ }
-
-    const job = backupQueue.enqueue(siteId, basePath, {
-        fullDownload: !!body.fullDownload,
-        skipGit: !!body.skipGit,
+    const job = await backupQueue.enqueue(site.id, basePath, {
+        fullDownload: data.fullDownload,
+        skipGit: data.skipGit,
     });
 
     // Wait for the job to start and get its backupId (with timeout)
     const backupId = await Promise.race([
         job.started,
-        new Promise(r => setTimeout(() => r(null), 5000)),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 5000)),
     ]);
 
     return NextResponse.json({

@@ -9,6 +9,7 @@ Node.js app for backing up WordPress websites. Downloads files via FTP/SFTP, dum
 ```bash
 npm install
 cp .env.example .env   # fill in the secrets
+npm run db:migrate     # create / update the database
 
 # Dev
 npm run dev

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { formatDuration, formatSize, optionLabels } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -10,6 +11,15 @@ interface LogEntry {
     time: string;
     level: string;
     msg: string;
+}
+
+/** Fields shown in the run info header, all optional until the backup finishes. */
+interface RunStats {
+    durationMs?: number | null;
+    filesDownloaded?: number | null;
+    filesUnchanged?: number | null;
+    dumpSizeBytes?: number | null;
+    commitSha?: string | null;
 }
 
 // --- Run mode: show options, start backup, stream logs ---
@@ -30,17 +40,15 @@ interface LiveModeProps {
 }
 
 // --- History mode: show stored log from DB ---
-interface HistoryModeProps {
+interface HistoryModeProps extends RunStats {
     mode: 'history';
     backupId: number;
     domain: string;
     siteId?: number;
     status?: string;
     startedAt?: string;
-    durationMs?: number | null;
-    filesDownloaded?: number | null;
-    dumpSizeBytes?: number | null;
-    commitSha?: string | null;
+    fullDownload?: boolean;
+    skipGit?: boolean;
     onClose: () => void;
 }
 
@@ -70,7 +78,7 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
     const [starting, setStarting] = useState(false);
     const [startedAt, setStartedAt] = useState<string | null>(null);
     const [runStatus, setRunStatus] = useState<string | null>(null);
-    const [runInfo, setRunInfo] = useState<any>({});
+    const [stats, setStats] = useState<RunStats>({});
     const [logOpen, setLogOpen] = useState(true);
 
     async function handleStart() {
@@ -87,6 +95,8 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
                 setBackupId(data.backupId);
                 setStartedAt(new Date().toISOString());
                 setRunStatus('running');
+            } else {
+                setStarting(false);
             }
         } catch {
             setStarting(false);
@@ -102,19 +112,17 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
     // Fetch final result info when backup completes
     function handleStatusChange(status: string) {
         setRunStatus(status);
-        if (status === 'success' || status === 'error' || status === 'cancelled') {
-            if (backupId) {
-                fetch(`/api/backups/${backupId}/log`)
-                    .then(r => r.json())
-                    .then(data => setRunInfo({
-                        durationMs: data.duration_ms,
-                        filesDownloaded: data.files_downloaded,
-                        filesUnchanged: data.files_unchanged,
-                        dumpSizeBytes: data.dump_size_bytes,
-                        commitSha: data.commit_sha,
-                    }))
-                    .catch(() => {});
-            }
+        if ((status === 'success' || status === 'error' || status === 'cancelled') && backupId) {
+            fetch(`/api/backups/${backupId}/log`)
+                .then(r => r.json())
+                .then(data => setStats({
+                    durationMs: data.durationMs,
+                    filesDownloaded: data.filesDownloaded,
+                    filesUnchanged: data.filesUnchanged,
+                    dumpSizeBytes: data.dumpSizeBytes,
+                    commitSha: data.commitSha,
+                }))
+                .catch(() => {});
         }
     }
 
@@ -146,12 +154,8 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
                     <>
                         <RunInfo
                             startedAt={startedAt} status={runStatus} trigger="manual"
-                            options={JSON.stringify({ fullDownload, skipGit })}
-                            durationMs={runInfo.durationMs}
-                            filesDownloaded={runInfo.filesDownloaded}
-                            filesUnchanged={runInfo.filesUnchanged}
-                            dumpSizeBytes={runInfo.dumpSizeBytes}
-                            commitSha={runInfo.commitSha}
+                            fullDownload={fullDownload} skipGit={skipGit}
+                            {...stats}
                         />
                         <CollapsibleLog open={logOpen} onToggle={() => setLogOpen(!logOpen)}>
                             <LogStream jobId={jobId} onStatusChange={handleStatusChange} />
@@ -189,17 +193,15 @@ function LiveContent({ jobId, domain, siteId, onClose }: LiveModeProps) {
 
 // ============ History Mode ============
 
-function HistoryContent({ backupId, domain, siteId, status: initialStatus, startedAt, durationMs, filesDownloaded, dumpSizeBytes, commitSha, onClose }: HistoryModeProps) {
+function HistoryContent({ backupId, domain, siteId, status: initialStatus, startedAt, fullDownload, skipGit, onClose, ...initialStats }: HistoryModeProps) {
     const [logLines, setLogLines] = useState<LogEntry[] | null>(null);
     const [status, setStatus] = useState<string>(initialStatus || 'loading');
     const [logOpen, setLogOpen] = useState(false);
-    const [info, setInfo] = useState<any>({
-        startedAt: startedAt || null,
-        durationMs: durationMs || null,
-        filesDownloaded: filesDownloaded || null,
-        dumpSizeBytes: dumpSizeBytes || null,
-        commitSha: commitSha || null,
-        options: null,
+    const [info, setInfo] = useState<RunStats & { startedAt?: string | null; fullDownload?: boolean; skipGit?: boolean }>({
+        ...initialStats,
+        startedAt,
+        fullDownload,
+        skipGit,
     });
 
     useEffect(() => {
@@ -208,15 +210,16 @@ function HistoryContent({ backupId, domain, siteId, status: initialStatus, start
             .then(data => {
                 setLogLines(parseStoredLog(data.log || ''));
                 setStatus(data.status);
-                setInfo((prev: any) => ({
+                setInfo(prev => ({
                     ...prev,
-                    startedAt: data.started_at || prev.startedAt,
-                    durationMs: data.duration_ms ?? prev.durationMs,
-                    filesDownloaded: data.files_downloaded ?? prev.filesDownloaded,
-                    filesUnchanged: data.files_unchanged,
-                    dumpSizeBytes: data.dump_size_bytes ?? prev.dumpSizeBytes,
-                    commitSha: data.commit_sha || prev.commitSha,
-                    options: data.options || prev.options,
+                    startedAt: data.startedAt ?? prev.startedAt,
+                    durationMs: data.durationMs ?? prev.durationMs,
+                    filesDownloaded: data.filesDownloaded ?? prev.filesDownloaded,
+                    filesUnchanged: data.filesUnchanged ?? prev.filesUnchanged,
+                    dumpSizeBytes: data.dumpSizeBytes ?? prev.dumpSizeBytes,
+                    commitSha: data.commitSha ?? prev.commitSha,
+                    fullDownload: data.fullDownload ?? prev.fullDownload,
+                    skipGit: data.skipGit ?? prev.skipGit,
                 }));
             })
             .catch(() => {
@@ -229,16 +232,7 @@ function HistoryContent({ backupId, domain, siteId, status: initialStatus, start
         <>
             <ModalHeader domain={domain} siteId={siteId} status={status} onClose={onClose} />
             <div className="flex-1 overflow-y-auto">
-                <RunInfo
-                    startedAt={info.startedAt}
-                    status={status}
-                    durationMs={info.durationMs}
-                    filesDownloaded={info.filesDownloaded}
-                    filesUnchanged={info.filesUnchanged}
-                    dumpSizeBytes={info.dumpSizeBytes}
-                    commitSha={info.commitSha}
-                    options={info.options}
-                />
+                <RunInfo status={status} {...info} />
                 <CollapsibleLog open={logOpen} onToggle={() => setLogOpen(!logOpen)}>
                     <div className="p-4 font-mono text-xs bg-slate-950 text-slate-300 h-[300px] overflow-y-auto">
                         {logLines === null ? (
@@ -315,19 +309,14 @@ function ModalHeader({ domain, siteId, status, onClose, onCancel }: { domain: st
     );
 }
 
-function RunInfo({ startedAt, status, trigger, durationMs, filesDownloaded, filesUnchanged, dumpSizeBytes, commitSha, options }: {
+function RunInfo({ startedAt, status, trigger, durationMs, filesDownloaded, filesUnchanged, dumpSizeBytes, commitSha, fullDownload, skipGit }: RunStats & {
     startedAt?: string | null;
     status?: string | null;
     trigger?: string;
-    durationMs?: number | null;
-    filesDownloaded?: number | null;
-    filesUnchanged?: number | null;
-    dumpSizeBytes?: number | null;
-    commitSha?: string | null;
-    options?: string | null;
+    fullDownload?: boolean;
+    skipGit?: boolean;
 }) {
-    let parsedOptions: any = null;
-    try { if (options) parsedOptions = JSON.parse(options); } catch { /* ignore */ }
+    const options = optionLabels(!!fullDownload, !!skipGit, true);
 
     return (
         <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm border-b border-border">
@@ -352,15 +341,13 @@ function RunInfo({ startedAt, status, trigger, durationMs, filesDownloaded, file
             {filesDownloaded != null && (
                 <div>
                     <span className="text-muted-foreground text-xs">Files (updated / total)</span>
-                    <p className="font-medium text-xs">{filesDownloaded} / {(filesDownloaded || 0) + (filesUnchanged || 0)}</p>
+                    <p className="font-medium text-xs">{filesDownloaded} / {filesDownloaded + (filesUnchanged ?? 0)}</p>
                 </div>
             )}
-            {parsedOptions && (parsedOptions.fullDownload || parsedOptions.skipGit) && (
+            {options.length > 0 && (
                 <div>
                     <span className="text-muted-foreground text-xs">Options</span>
-                    <p className="font-medium text-xs">
-                        {[parsedOptions.fullDownload && 'Full download', parsedOptions.skipGit && 'No git'].filter(Boolean).join(', ')}
-                    </p>
+                    <p className="font-medium text-xs">{options.join(', ')}</p>
                 </div>
             )}
             {dumpSizeBytes != null && (
@@ -402,6 +389,11 @@ function LogStream({ jobId, onStatusChange }: { jobId: number; onStatusChange?: 
     const [lines, setLines] = useState<LogEntry[]>([]);
     const [status, setStatus] = useState('connecting');
     const bottomRef = useRef<HTMLDivElement>(null);
+    // Latest callback without re-subscribing the event source on every parent render
+    const onStatusChangeRef = useRef(onStatusChange);
+    useEffect(() => {
+        onStatusChangeRef.current = onStatusChange;
+    });
 
     useEffect(() => {
         setLines([]);
@@ -413,11 +405,11 @@ function LogStream({ jobId, onStatusChange }: { jobId: number; onStatusChange?: 
                 setLines(prev => [...prev, { time: data.time, level: data.level, msg: data.msg }]);
             } else if (data.type === 'status') {
                 setStatus(data.status);
-                onStatusChange?.(data.status);
+                onStatusChangeRef.current?.(data.status);
             } else if (data.type === 'done') {
                 const finalStatus = data.status === 'complete' ? 'success' : 'error';
                 setStatus(finalStatus);
-                onStatusChange?.(finalStatus);
+                onStatusChangeRef.current?.(finalStatus);
                 source.close();
             }
         };
@@ -450,16 +442,4 @@ function LogStream({ jobId, onStatusChange }: { jobId: number; onStatusChange?: 
             <div ref={bottomRef} />
         </div>
     );
-}
-
-function formatDuration(ms: number): string {
-    const secs = Math.round(ms / 1000);
-    if (secs < 60) return `${secs}s`;
-    return `${Math.floor(secs / 60)}m ${secs % 60}s`;
-}
-
-function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
