@@ -1,16 +1,24 @@
 .DS_Store
-config.txt
-config.json
-files/*
-!files/.gitkeep
-node_modules
 .vscode
-/sp-certificates
-.dewwwe-backup-token*
+node_modules
 
-# Next.js
+# Next.js / TypeScript
 .next
 out
+tsconfig.tsbuildinfo
 
-# Data (SQLite + backups)
+# Environment
+.env
+.env.*
+!.env.example
+
+# Runtime data: SQLite database, site clones, certificates (all under DATA_DIR)
 /data
+/files
+/sp-certificates
+/prisma/*.db*
+
+# Legacy v1 artifacts, kept ignored so an old copy never gets committed
+config.json
+config.txt
+.dewwwe-backup-token*

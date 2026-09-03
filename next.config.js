@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: 'standalone',
-    // better-sqlite3 is a native module, must not be bundled
-    serverExternalPackages: ['better-sqlite3'],
+    // Native modules and the Prisma runtime must not be bundled by Next.js
+    serverExternalPackages: ['better-sqlite3', '@prisma/client', '@prisma/adapter-better-sqlite3'],
 };
 
 export default nextConfig;
