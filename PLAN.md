@@ -345,7 +345,11 @@ Verified on dewwwe.com (FTP): skip-git run, full run with commit, tag, push and 
 ### Done (2026-09-04) and deviations from the plan
 
 - `enqueue` serializes the conflict check and the insert with an in-process lock instead of a database transaction: the app is a single process, and it keeps the queue off Prisma interactive transactions on the single-connection better-sqlite3 adapter.
-- The worker loop is `dispatch()`, re-entered after every enqueue and every completion. The running job leaves memory before `done` is emitted, so an SSE client never sees a stale buffer.
+- The worker loop is `dispatch()`, re-entered after every enqueue and every completion. The job is in memory before the claim (so a cancel in that window aborts it) and leaves memory before `done` is emitted. A `status` event carries the `pending → running` transition with the claim time.
+- SSE consumers go through `subscribe(backupId, listeners)`: listeners and buffer in the same tick, then the route re-reads the row, since every final status is written before `done` is emitted. A finished backup gets its stored log replayed (`parseLog` in `lib/engine/logger.ts`).
+- Queue, scheduler and boot state sit on `globalThis` in every environment, not only in development: the boot hook and the route bundles of a production build may not share a module instance. A second `boot()` in the same process skips the orphan sweep.
+- `cancel` is answered by the queue before the row is looked up, so a run whose site was deleted (cascade) stays cancellable.
+- `getSettings()` is a read with a one-time `create`, not an `upsert` (which took a write transaction on every call).
 - `jobId` is gone. The routes keep their Phase 2 URLs (`/api/backups/run/[id]`, `cancel/[jobId]`, `logs/[jobId]`, `status`) but the parameter is the Backup id; Phase 4 renames them.
 - `scheduler.reload()` is called by the site routes. The settings route does not exist yet, it comes with Phase 4 and must call it too. `stop()` and `scheduledSiteIds()` exist for tests and the boot log.
 - Boot logic lives in `lib/jobs/boot.ts` so it can be tested; `instrumentation.ts` only guards `NEXT_RUNTIME` and imports it dynamically. Retention runs once at boot, then daily at 04:00 `TZ`; it keeps the last 5 per site and never deletes an active row. Missing secrets throw in production and only warn elsewhere.

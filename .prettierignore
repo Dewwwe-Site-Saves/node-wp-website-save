@@ -10,3 +10,4 @@ tsconfig.tsbuildinfo
 
 # Prose stays hand-written: README and PLAN have a deliberate structure
 *.md
+next-env.d.ts

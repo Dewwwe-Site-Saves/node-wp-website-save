@@ -28,7 +28,7 @@ Working branch is `v2`. [PLAN.md](./PLAN.md) is the source of truth for scope an
 - `app/` — Next.js 16 App Router (pages + `api/` routes)
 - `components/` — React components, `components/ui` is shadcn
 - `lib/` — `db.ts`, `prisma.ts`, `crypto.ts`, `validation.ts` (zod), `paths.ts`
-- `lib/jobs/` — `queue.ts`: DB-first queue. The `Backup` row is the job; in memory only the `AbortController` and the log buffer of the runs in progress. `enqueue` throws `BackupConflictError` when the site already has an active backup, `cancel` marks a pending row or aborts a running one, `events` emits `log` / `done` for SSE. `scheduler.ts`: one node-cron task per enabled site, `reload()` rebuilds them from the database and must be called after every site or settings mutation. `boot.ts`: called once by `instrumentation.ts` (env check, `initDatabase`, orphan job sweep, scheduler, daily retention).
+- `lib/jobs/` — `queue.ts`: DB-first queue. The `Backup` row is the job; in memory only the `AbortController` and the log buffer of the runs in progress. `enqueue` throws `BackupConflictError` when the site already has an active backup, `cancel` marks a pending row or aborts a running one, `subscribe(backupId, listeners)` registers `log` / `status` / `done` listeners and returns the buffered lines in the same tick (the SSE route relies on that ordering). Queue, scheduler and boot state live on `globalThis` unconditionally: in production the boot hook and the route bundles may not share a module instance. `scheduler.ts`: one node-cron task per enabled site, `reload()` rebuilds them from the database and must be called after every site or settings mutation. `boot.ts`: called once by `instrumentation.ts` (env check, `initDatabase`, orphan job sweep, scheduler, daily retention).
 - `lib/testing/db.ts` — throwaway SQLite database for tests that run Prisma for real (temp `DATA_DIR`, migrations replayed); import it before anything that touches the database.
 - `lib/engine/` — the backup engine, see above
 - `prisma/` — schema and migrations
@@ -56,7 +56,7 @@ Spell checking: Code Spell Checker reads `.vscode/cspell.json`. Add project voca
 - 4-space indent, single quotes, semicolons, `printWidth` 100 — Prettier enforces it, run `npm run format` before proposing a commit.
 - Never hard-wrap prose at a fixed width, in markdown or in comments. One paragraph is one line.
 - Code, identifiers, comments and **UI labels** in English.
-- Imports use the `@/*` alias, not relative paths (`importModuleSpecifier: non-relative`).
+- Imports use the `@/*` alias in `app/`, `components/` and root files (`importModuleSpecifier: non-relative`). Inside `lib/` they are relative: vitest resolves no alias, and `lib` must stay runnable from the tests.
 - Dates stored as ISO 8601 UTC. Git tags are `YYYYMMDD-HHmmss` in UTC.
 - Stored credentials are encrypted as `enc:v1:<iv>:<tag>:<data>` via `lib/crypto.ts` — never write a secret to the database in clear.
 - All runtime state lives under `DATA_DIR` (env var, falls back to `cwd/data`): database, `files/<repo>` clones, `sp-certificates/`. Never build paths from `__dirname` — it breaks the Docker standalone build.

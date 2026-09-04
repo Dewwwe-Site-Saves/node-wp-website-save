@@ -11,7 +11,13 @@ export type BackupStatus = (typeof BACKUP_STATUSES)[number];
 export type TriggerType = (typeof TRIGGER_TYPES)[number];
 
 /** Statuses of a backup that is still in the queue or executing. */
-export const ACTIVE_STATUSES: readonly BackupStatus[] = ['pending', 'running'];
+export const ACTIVE_STATUSES = ['pending', 'running'] as const satisfies readonly BackupStatus[];
+
+export type ActiveStatus = (typeof ACTIVE_STATUSES)[number];
+
+export function isActive(status: string): status is ActiveStatus {
+    return (ACTIVE_STATUSES as readonly string[]).includes(status);
+}
 
 // ============ Field schemas ============
 

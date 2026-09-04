@@ -16,11 +16,13 @@ import {
     TableRow,
 } from '@/components/ui/table';
 
-interface RunningJob {
+interface ActiveBackup {
     id: number;
     siteId: number;
     domain: string;
 }
+
+const isActive = (status: string) => status === 'pending' || status === 'running';
 
 type ModalState =
     | { mode: 'live'; backupId: number; domain: string; siteId: number }
@@ -35,7 +37,7 @@ export function BackupHistory({
     showDomain?: boolean;
     siteId?: number;
 }) {
-    const [runningJobs, setRunningJobs] = useState<RunningJob[]>([]);
+    const [runningJobs, setRunningJobs] = useState<ActiveBackup[]>([]);
     const [modal, setModal] = useState<ModalState | null>(null);
     const router = useRouter();
 
@@ -57,16 +59,13 @@ export function BackupHistory({
         return () => clearInterval(interval);
     }, [runningJobs.length, router]);
 
+    // The row is the job: a pending or running row is followed live under its own id.
     function handleRowClick(backup: BackupWithDomain) {
-        const runningJob =
-            backup.status === 'running'
-                ? runningJobs.find((j) => j.siteId === backup.siteId)
-                : undefined;
-        if (runningJob) {
+        if (isActive(backup.status)) {
             setModal({
                 mode: 'live',
-                backupId: runningJob.id,
-                domain: runningJob.domain,
+                backupId: backup.id,
+                domain: backup.site.domain,
                 siteId: backup.siteId,
             });
         } else {
@@ -76,10 +75,8 @@ export function BackupHistory({
 
     // Active backups queued since this page was rendered, not yet in its rows
     const relevantRunning = siteId ? runningJobs.filter((j) => j.siteId === siteId) : runningJobs;
-    const runningSiteIds = new Set(
-        backups.filter((b) => b.status === 'running').map((b) => b.siteId),
-    );
-    const extraRunning = relevantRunning.filter((j) => !runningSiteIds.has(j.siteId));
+    const knownIds = new Set(backups.map((b) => b.id));
+    const extraRunning = relevantRunning.filter((j) => !knownIds.has(j.id));
 
     return (
         <>
@@ -209,6 +206,8 @@ export function BackupHistory({
                     domain={modal.backup.site.domain}
                     siteId={modal.backup.siteId}
                     status={modal.backup.status}
+                    triggerType={modal.backup.triggerType}
+                    queuedAt={new Date(modal.backup.queuedAt).toISOString()}
                     startedAt={
                         modal.backup.startedAt
                             ? new Date(modal.backup.startedAt).toISOString()

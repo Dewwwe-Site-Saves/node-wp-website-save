@@ -1,18 +1,16 @@
 import { EventEmitter } from 'node:events';
 import path from 'node:path';
-import { getGithubConfig, getSettings, getSharePointConfig, getSiteConfig } from '../db';
+import { getGithubConfig, getSettings, getSharePointConfig, getSite, getSiteConfig } from '../db';
 import { runBackup } from '../engine/backup';
 import { errorMessage } from '../engine/cancel';
-import type { LogEntry, TriggerType } from '../engine/types';
+import { formatLog } from '../engine/logger';
+import type { LogEntry } from '../engine/types';
 import { filesDir } from '../paths';
 import { prisma } from '../prisma';
-import { ACTIVE_STATUSES, type BackupStatus } from '../validation';
+import { ACTIVE_STATUSES, type BackupStatus, type TriggerType } from '../validation';
 
 /**
- * DB-first job queue. The `Backup` row is the job: it is created as `pending` at enqueue time,
- * claimed as `running` by the worker loop and updated with the engine result at the end. The
- * only in-memory state is what cannot live in the database — the AbortController and the log
- * buffer of the runs in progress — so a restart leaves nothing behind except rows to sweep.
+ * DB-first job queue. The `Backup` row is the job: created as `pending` at enqueue time, claimed as `running` by the worker loop, updated with the engine result at the end. The only in-memory state is what cannot live in the database, the AbortController and the log buffer of the runs in progress, so a restart leaves nothing behind except rows to sweep.
  */
 
 export interface EnqueueOptions {
@@ -26,9 +24,29 @@ export interface LogEvent {
     entry: LogEntry;
 }
 
+/** Emitted when the worker claims a pending row. */
+export interface StatusEvent {
+    backupId: number;
+    status: 'running';
+    /** ISO 8601 */
+    startedAt: string;
+}
+
 export interface DoneEvent {
     backupId: number;
     status: BackupStatus;
+}
+
+export interface BackupListeners {
+    onLog?: (entry: LogEntry) => void;
+    onStatus?: (event: StatusEvent) => void;
+    onDone: (status: BackupStatus) => void;
+}
+
+export interface Subscription {
+    /** Lines buffered before the subscription: empty for a pending backup and once the run is over. */
+    lines: readonly LogEntry[];
+    unsubscribe: () => void;
 }
 
 /** Thrown by `enqueue` when the site already has a pending or running backup. */
@@ -39,83 +57,79 @@ export class BackupConflictError extends Error {
     }
 }
 
+type QueueEvents = { log: [LogEvent]; status: [StatusEvent]; done: [DoneEvent] };
+
 interface RunningJob {
     abort: AbortController;
     logLines: LogEntry[];
 }
 
+interface PendingRow {
+    id: number;
+    siteId: number;
+    triggerType: string;
+    fullDownload: boolean;
+    skipGit: boolean;
+}
+
 interface QueueState {
     running: Map<number, RunningJob>;
-    events: EventEmitter<{ log: [LogEvent]; done: [DoneEvent] }>;
-    dispatching: boolean;
-    dispatchAgain: boolean;
-    /** Settles when the enqueue in progress is done; the next one chains on it. */
-    enqueueLock: Promise<void>;
+    events: EventEmitter<QueueEvents>;
+    /** Enqueues run one at a time: the conflict check and the insert must not interleave. */
+    enqueueLock: Promise<unknown>;
+    /** Fill passes run one at a time; a call during a pass queues another one. */
+    dispatching: Promise<void>;
 }
 
-// Cached on globalThis so `next dev` hot reloads keep the running jobs and the listeners.
+// Process-wide singleton on globalThis: `next dev` hot reloads keep the running jobs and the listeners, and in production the boot hook and the route bundles may not share a module instance.
 const globalForQueue = globalThis as unknown as { backupQueue?: QueueState };
 
-const state: QueueState = globalForQueue.backupQueue ?? {
+const state: QueueState = (globalForQueue.backupQueue ??= {
     running: new Map(),
-    events: new EventEmitter(),
-    dispatching: false,
-    dispatchAgain: false,
+    events: new EventEmitter<QueueEvents>({ captureRejections: false }),
     enqueueLock: Promise.resolve(),
-};
-state.events.setMaxListeners(50);
+    dispatching: Promise.resolve(),
+});
+state.events.setMaxListeners(100);
 
-if (process.env.NODE_ENV !== 'production') {
-    globalForQueue.backupQueue = state;
-}
-
-/** `log` while a run is in progress, `done` once its final status is stored. */
+/** `log` and `status` while a run is in progress, `done` once its final status is stored. Prefer `subscribe` for a single backup. */
 export const events = state.events;
 
 /**
- * Creates the `pending` Backup row and returns its id. Rejects with `BackupConflictError` when
- * the site already has an active backup. The check and the insert run under an in-process
- * lock rather than a database transaction: the app is a single process, so the lock is enough
- * to keep two enqueues from interleaving, and it keeps the queue off Prisma interactive
- * transactions on the single-connection better-sqlite3 adapter.
+ * Creates the `pending` Backup row and returns its id. Rejects with `BackupConflictError` when the site already has an active backup. The check and the insert run under an in-process lock rather than a database transaction: the app is a single process, so the lock is enough, and it keeps the queue off Prisma interactive transactions on the single-connection better-sqlite3 adapter.
  */
 export async function enqueue(siteId: number, options: EnqueueOptions = {}): Promise<number> {
-    const previous = state.enqueueLock;
-    let release!: () => void;
-    state.enqueueLock = new Promise((resolve) => (release = resolve));
-    await previous;
-
-    let backupId: number;
-    try {
-        const site = await prisma.site.findUnique({ where: { id: siteId }, select: { id: true } });
-        if (!site) throw new Error(`Site not found: ${siteId}`);
-
-        const active = await prisma.backup.findFirst({
-            where: { siteId, status: { in: [...ACTIVE_STATUSES] } },
-            select: { id: true },
-        });
-        if (active) throw new BackupConflictError(siteId);
-
-        const backup = await prisma.backup.create({
-            data: {
-                siteId,
-                triggerType: options.triggerType ?? 'manual',
-                fullDownload: options.fullDownload === true,
-                skipGit: options.skipGit === true,
-            },
-            select: { id: true },
-        });
-        backupId = backup.id;
-    } finally {
-        release();
-    }
-    void dispatch();
+    const insert = () => insertPending(siteId, options);
+    const result = state.enqueueLock.then(insert, insert);
+    state.enqueueLock = result.catch(() => undefined);
+    const backupId = await result;
+    dispatch();
     return backupId;
 }
 
+async function insertPending(siteId: number, options: EnqueueOptions): Promise<number> {
+    if (!(await getSite(siteId))) throw new Error(`Site not found: ${siteId}`);
+
+    const active = await prisma.backup.findFirst({
+        where: { siteId, status: { in: [...ACTIVE_STATUSES] } },
+        select: { id: true },
+    });
+    if (active) throw new BackupConflictError(siteId);
+
+    const backup = await prisma.backup.create({
+        data: {
+            siteId,
+            triggerType: options.triggerType ?? 'manual',
+            fullDownload: options.fullDownload === true,
+            skipGit: options.skipGit === true,
+        },
+        select: { id: true },
+    });
+    return backup.id;
+}
+
 /**
- * Pending: marked `cancelled` right away. Running: the engine is asked to stop and stores the
- * final status itself. Returns false when the backup is unknown or already finished.
+ * Pending: marked `cancelled` right away. Running: the engine is asked to stop and stores the final status itself. Returns false when the backup is unknown or already finished.
  */
 export async function cancel(backupId: number): Promise<boolean> {
     const pending = await prisma.backup.updateMany({
@@ -132,32 +146,37 @@ export async function cancel(backupId: number): Promise<boolean> {
     return true;
 }
 
-/** Log lines of a run in progress (for SSE replay); null once the run is over. */
-export function getLogLines(backupId: number): readonly LogEntry[] | null {
-    return state.running.get(backupId)?.logLines ?? null;
+/**
+ * Registers listeners for one backup and returns the lines buffered so far, both in the same tick, so nothing emitted in between can be missed. The listeners are removed on `done`.
+ */
+export function subscribe(backupId: number, listeners: BackupListeners): Subscription {
+    const onLog = (event: LogEvent) => {
+        if (event.backupId === backupId) listeners.onLog?.(event.entry);
+    };
+    const onStatus = (event: StatusEvent) => {
+        if (event.backupId === backupId) listeners.onStatus?.(event);
+    };
+    const onDone = (event: DoneEvent) => {
+        if (event.backupId !== backupId) return;
+        unsubscribe();
+        listeners.onDone(event.status);
+    };
+    const unsubscribe = () => {
+        state.events.off('log', onLog);
+        state.events.off('status', onStatus);
+        state.events.off('done', onDone);
+    };
+    state.events.on('log', onLog);
+    state.events.on('status', onStatus);
+    state.events.on('done', onDone);
+    return { lines: [...(state.running.get(backupId)?.logLines ?? [])], unsubscribe };
 }
 
-/**
- * Worker loop: claims pending rows (oldest first) while there are free slots. One instance at
- * a time; a call made while it runs makes it go through the pending rows once more, so an
- * enqueue or a completion during the loop is never missed.
- */
-async function dispatch(): Promise<void> {
-    if (state.dispatching) {
-        state.dispatchAgain = true;
-        return;
-    }
-    state.dispatching = true;
-    try {
-        do {
-            state.dispatchAgain = false;
-            await fillSlots();
-        } while (state.dispatchAgain);
-    } catch (error) {
-        console.error(`[queue] dispatch failed: ${errorMessage(error)}`);
-    } finally {
-        state.dispatching = false;
-    }
+/** Worker loop: one fill pass at a time, re-entered after every enqueue and every completion. A pass with nothing to claim costs two reads. */
+function dispatch(): void {
+    const pass = () =>
+        fillSlots().catch((error) => console.error(`[queue] dispatch: ${errorMessage(error)}`));
+    state.dispatching = state.dispatching.then(pass, pass);
 }
 
 async function fillSlots(): Promise<void> {
@@ -166,30 +185,40 @@ async function fillSlots(): Promise<void> {
         const next = await prisma.backup.findFirst({
             where: { status: 'pending' },
             orderBy: { id: 'asc' },
-            select: { id: true },
+            select: {
+                id: true,
+                siteId: true,
+                triggerType: true,
+                fullDownload: true,
+                skipGit: true,
+            },
         });
         if (!next) return;
 
-        // The row may have been cancelled between the read and the claim: skip it then.
-        const claimed = await prisma.backup.updateMany({
-            where: { id: next.id, status: 'pending' },
-            data: { status: 'running', startedAt: new Date() },
-        });
-        if (claimed.count === 0) continue;
-
+        // In memory before the claim, so a cancel landing in between finds the job and aborts it instead of being refused.
         const job: RunningJob = { abort: new AbortController(), logLines: [] };
         state.running.set(next.id, job);
-        void run(next.id, job)
-            .catch((error) => console.error(`[queue] backup ${next.id}: ${errorMessage(error)}`))
-            .finally(() => {
-                state.running.delete(next.id);
-                void dispatch();
-            });
+        const startedAt = new Date();
+        const claimed = await prisma.backup.updateMany({
+            where: { id: next.id, status: 'pending' },
+            data: { status: 'running', startedAt },
+        });
+        if (claimed.count === 0) {
+            // Cancelled between the read and the claim.
+            state.running.delete(next.id);
+            continue;
+        }
+        state.events.emit('status', {
+            backupId: next.id,
+            status: 'running',
+            startedAt: startedAt.toISOString(),
+        });
+        void run(next, job).finally(dispatch);
     }
 }
 
-async function run(backupId: number, job: RunningJob): Promise<void> {
-    const backup = await prisma.backup.findUniqueOrThrow({ where: { id: backupId } });
+async function run(backup: PendingRow, job: RunningJob): Promise<void> {
+    const backupId = backup.id;
     const onLog = (entry: LogEntry) => {
         job.logLines.push(entry);
         state.events.emit('log', { backupId, entry });
@@ -197,27 +226,26 @@ async function run(backupId: number, job: RunningJob): Promise<void> {
 
     let status: BackupStatus;
     try {
-        const [site, github, sharepoint] = await Promise.all([
-            getSiteConfig(backup.siteId),
-            getGithubConfig(),
-            getSharePointConfig(),
-        ]);
-        if (!site) throw new Error('Site was deleted');
-        if (!github) throw new Error('GitHub token and email are not configured (Settings)');
+        let final: Parameters<typeof prisma.backup.updateMany>[0]['data'];
+        try {
+            const [site, github, sharepoint] = await Promise.all([
+                getSiteConfig(backup.siteId),
+                getGithubConfig(),
+                getSharePointConfig(),
+            ]);
+            if (!site) throw new Error('Site was deleted');
+            if (!github) throw new Error('GitHub token and email are not configured (Settings)');
 
-        const result = await runBackup(site, github, sharepoint, {
-            localRoot: path.join(filesDir(), site.repo),
-            triggerType: backup.triggerType as TriggerType,
-            fullDownload: backup.fullDownload,
-            skipGit: backup.skipGit,
-            signal: job.abort.signal,
-            onLog,
-        });
-        status = result.status;
-        // updateMany rather than update: deleting the site cascades to the row while it runs.
-        await prisma.backup.updateMany({
-            where: { id: backupId },
-            data: {
+            const result = await runBackup(site, github, sharepoint, {
+                localRoot: path.join(filesDir(), site.repo),
+                triggerType: backup.triggerType as TriggerType,
+                fullDownload: backup.fullDownload,
+                skipGit: backup.skipGit,
+                signal: job.abort.signal,
+                onLog,
+            });
+            status = result.status;
+            final = {
                 status,
                 finishedAt: result.finishedAt,
                 durationMs: result.durationMs,
@@ -230,25 +258,28 @@ async function run(backupId: number, job: RunningJob): Promise<void> {
                 releaseUrl: result.releaseUrl,
                 errorMessage: result.errorMessage,
                 log: result.log,
-            },
-        });
-    } catch (error) {
-        // Only reached when the configuration could not be loaded: the engine never throws.
-        const cancelled = job.abort.signal.aborted;
-        status = cancelled ? 'cancelled' : 'error';
-        const message = cancelled ? 'Cancelled by user' : errorMessage(error);
-        onLog({ time: new Date().toISOString(), level: 'error', msg: message });
-        await prisma.backup.updateMany({
-            where: { id: backupId },
-            data: {
+            };
+        } catch (error) {
+            // Only reached when the configuration could not be loaded: the engine never throws.
+            const cancelled = job.abort.signal.aborted;
+            status = cancelled ? 'cancelled' : 'error';
+            const message = cancelled ? 'Cancelled by user' : errorMessage(error);
+            onLog({ time: new Date().toISOString(), level: 'error', msg: message });
+            final = {
                 status,
                 finishedAt: new Date(),
                 errorMessage: message,
-                log: job.logLines.map((l) => `${l.time} [${l.level}] ${l.msg}`).join('\n'),
-            },
-        });
+                log: formatLog(job.logLines),
+            };
+        }
+        // updateMany rather than update: deleting the site cascades to the row while it runs.
+        await prisma.backup.updateMany({ where: { id: backupId }, data: final });
+    } catch (error) {
+        status = 'error';
+        console.error(`[queue] backup ${backupId}: ${errorMessage(error)}`);
+    } finally {
+        // Gone from the running set before listeners hear about it.
+        state.running.delete(backupId);
     }
-    // Gone from the running set before listeners hear about it: the SSE route replays the buffer, then follows the events.
-    state.running.delete(backupId);
     state.events.emit('done', { backupId, status });
 }

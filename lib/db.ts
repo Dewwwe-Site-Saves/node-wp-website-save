@@ -6,7 +6,7 @@ import type { GithubConfig, Protocol, SharePointConfig, SiteConfig } from './eng
 import { spCertDir } from './paths';
 import { prisma } from './prisma';
 import { ACTIVE_STATUSES } from './validation';
-import type { BackupsQuery, SiteCreateInput, SiteUpdateInput } from './validation';
+import type { ActiveStatus, BackupsQuery, SiteCreateInput, SiteUpdateInput } from './validation';
 
 // ============ Sites ============
 
@@ -115,7 +115,7 @@ export interface ActiveBackup {
     id: number;
     siteId: number;
     domain: string;
-    status: 'pending' | 'running';
+    status: ActiveStatus;
 }
 
 /** Backups still in the queue or executing, oldest first. The queue state is the database. */
@@ -129,15 +129,23 @@ export async function listActiveBackups(): Promise<ActiveBackup[]> {
         id: row.id,
         siteId: row.siteId,
         domain: row.site.domain,
-        status: row.status as ActiveBackup['status'],
+        status: row.status as ActiveStatus,
     }));
 }
 
 // ============ Settings ============
 
-/** The singleton row, created with defaults on first access. */
-export function getSettings(): Promise<Settings> {
-    return prisma.settings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+/** The singleton row, created with defaults on first access. A plain read afterwards: `upsert` would take a write transaction on every call. */
+export async function getSettings(): Promise<Settings> {
+    const existing = await prisma.settings.findUnique({ where: { id: 1 } });
+    if (existing) return existing;
+    try {
+        return await prisma.settings.create({ data: { id: 1 } });
+    } catch (error) {
+        // Two first calls at once: the loser reads the row the winner created.
+        if (!isUniqueViolation(error)) throw error;
+        return prisma.settings.findUniqueOrThrow({ where: { id: 1 } });
+    }
 }
 
 // ============ Engine configs (decrypted) ============

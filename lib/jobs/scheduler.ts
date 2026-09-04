@@ -4,10 +4,7 @@ import { errorMessage } from '../engine/cancel';
 import { BackupConflictError, enqueue } from './queue';
 
 /**
- * One node-cron task per enabled site, firing `enqueue(siteId, { triggerType: 'scheduled' })`.
- * The schedule is `site.cronSchedule`, or `Settings.defaultCron` when the site has none, in
- * the `TZ` timezone. `reload()` rebuilds everything from the database and must be called after
- * every site or settings mutation; the boot hook calls it once at startup.
+ * One node-cron task per enabled site, firing `enqueue(siteId, { triggerType: 'scheduled' })`. The schedule is `site.cronSchedule`, or `Settings.defaultCron` when the site has none, in the `TZ` timezone. `reload()` rebuilds everything from the database and must be called after every site or settings mutation; the boot hook calls it once at startup.
  */
 
 interface SchedulerState {
@@ -16,17 +13,13 @@ interface SchedulerState {
     reloading: Promise<void>;
 }
 
-// Cached on globalThis so `next dev` hot reloads do not leave orphan cron tasks running.
+// Process-wide singleton on globalThis: `next dev` hot reloads leave no orphan cron tasks, and in production the boot hook and the route bundles may not share a module instance.
 const globalForScheduler = globalThis as unknown as { backupScheduler?: SchedulerState };
 
-const state: SchedulerState = globalForScheduler.backupScheduler ?? {
+const state: SchedulerState = (globalForScheduler.backupScheduler ??= {
     tasks: new Map(),
     reloading: Promise.resolve(),
-};
-
-if (process.env.NODE_ENV !== 'production') {
-    globalForScheduler.backupScheduler = state;
-}
+});
 
 /** Drops every task and schedules the enabled sites again from the database. */
 export function reload(): Promise<void> {

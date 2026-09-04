@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { abortable, isCancellation } from '../engine/cancel';
 import type { BackupOptions, BackupResult, LogEntry } from '../engine/types';
 import { setupTestDatabase } from '../testing/db';
-import type { DoneEvent, LogEvent } from './queue';
+import type { DoneEvent, LogEvent, StatusEvent } from './queue';
 
 // The engine is replaced by a fake that logs one line, then waits until the test releases it.
 // Everything else — Prisma, the crypto helpers, the config loaders — runs for real on a
@@ -93,6 +93,13 @@ function waitDone(backupId: number): Promise<DoneEvent> {
     });
 }
 
+/** Lines buffered for a backup right now, through a throwaway subscription. */
+function buffered(backupId: number): readonly LogEntry[] {
+    const subscription = queue.subscribe(backupId, { onDone: () => {} });
+    subscription.unsubscribe();
+    return subscription.lines;
+}
+
 async function waitStarted(count: number): Promise<void> {
     await vi.waitFor(() => expect(engine.calls.length).toBe(count));
 }
@@ -156,7 +163,7 @@ describe('worker', () => {
             triggerType: 'scheduled',
         });
         expect(engine.calls[0].localRoot).toBe(path.join(dataDir, 'files', 'a-example-com'));
-        expect(queue.getLogLines(id)).toEqual([expect.objectContaining({ msg: 'fake run' })]);
+        expect(buffered(id)).toEqual([expect.objectContaining({ msg: 'fake run' })]);
         expect(await listActiveBackups()).toEqual([
             { id, siteId: siteA, domain: 'a.example.com', status: 'running' },
         ]);
@@ -169,7 +176,7 @@ describe('worker', () => {
         expect(logs).toEqual([
             { backupId: id, entry: expect.objectContaining({ msg: 'fake run' }) },
         ]);
-        expect(queue.getLogLines(id)).toBeNull();
+        expect(buffered(id)).toEqual([]);
         const stored = await prisma.backup.findUniqueOrThrow({ where: { id } });
         expect(stored).toMatchObject({
             status: 'success',
@@ -275,11 +282,58 @@ describe('cancel', () => {
     });
 });
 
+describe('subscribe', () => {
+    it('replays the buffer, then forwards log and done for that backup only', async () => {
+        await prisma.settings.update({ where: { id: 1 }, data: { concurrency: 1 } });
+        const first = await queue.enqueue(siteA);
+        const second = await queue.enqueue(siteB);
+        await waitStarted(1);
+
+        const seen: string[] = [];
+        const subscription = queue.subscribe(second, {
+            onLog: (entry) => seen.push(`log:${entry.msg}`),
+            onStatus: (event) => seen.push(`status:${event.status}`),
+            onDone: (status) => seen.push(`done:${status}`),
+        });
+        expect(subscription.lines).toEqual([]);
+
+        releaseNext();
+        await waitDone(first);
+        await waitStarted(2);
+        releaseNext();
+        await waitDone(second);
+
+        expect(seen).toEqual(['status:running', 'log:fake run', 'done:success']);
+        expect(queue.events.listenerCount('done')).toBe(0);
+    });
+
+    it('emits status with the claim time', async () => {
+        const before = Date.now();
+        const statuses: StatusEvent[] = [];
+        const onStatus = (event: StatusEvent) => statuses.push(event);
+        queue.events.on('status', onStatus);
+
+        const id = await queue.enqueue(siteA);
+        await waitStarted(1);
+        queue.events.off('status', onStatus);
+
+        expect(statuses).toEqual([
+            { backupId: id, status: 'running', startedAt: expect.any(String) },
+        ]);
+        expect(Date.parse(statuses[0].startedAt)).toBeGreaterThanOrEqual(before);
+        const row = await prisma.backup.findUniqueOrThrow({ where: { id } });
+        expect(row.startedAt?.toISOString()).toBe(statuses[0].startedAt);
+
+        releaseNext();
+        await waitDone(id);
+    });
+});
+
 describe('log lines', () => {
     it('are the LogEntry objects forwarded by the engine', async () => {
         const id = await queue.enqueue(siteA);
         await waitStarted(1);
-        const lines = queue.getLogLines(id) as LogEntry[];
+        const lines = buffered(id);
         expect(lines).toHaveLength(1);
         expect(lines[0]).toMatchObject({ level: 'info', msg: 'fake run' });
         releaseNext();

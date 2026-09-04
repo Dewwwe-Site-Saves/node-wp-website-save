@@ -89,6 +89,8 @@ export async function scanRemote(
                     }
                 }
             } catch (error) {
+                // A listing cut short by the cancellation (client closed) is not a listing error.
+                throwIfAborted(signal);
                 listErrors++;
                 log.warn(`  Could not list ${dir}: ${errorMessage(error)}`);
             } finally {

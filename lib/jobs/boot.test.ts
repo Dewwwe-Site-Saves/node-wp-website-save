@@ -98,6 +98,35 @@ describe('sweepInterruptedBackups', () => {
     });
 });
 
+describe('boot', () => {
+    afterEach(async () => {
+        await boot.shutdown();
+        vi.unstubAllEnvs();
+    });
+
+    it('sweeps once per process: a second call leaves live rows alone', async () => {
+        vi.stubEnv('SESSION_SECRET', 'x');
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+        const site = await createSite('a.example.com');
+
+        const orphan = await createBackup(site, 'running', 0);
+        await boot.boot();
+        expect((await prisma.backup.findUniqueOrThrow({ where: { id: orphan } })).status).toBe(
+            'error',
+        );
+
+        const live = await createBackup(site, 'running', 0);
+        await boot.boot();
+        expect((await prisma.backup.findUniqueOrThrow({ where: { id: live } })).status).toBe(
+            'running',
+        );
+
+        warn.mockRestore();
+        log.mockRestore();
+    });
+});
+
 describe('pruneBackups', () => {
     it('deletes rows past the retention, keeping the last 5 per site and active rows', async () => {
         const a = await createSite('a.example.com');
