@@ -1,208 +1,188 @@
-import { EventEmitter } from 'events';
-import { backupSite } from './backup.js';
+import { EventEmitter } from 'node:events';
+import path from 'node:path';
 import { getGithubConfig, getSharePointConfig, getSite, getSiteConfig } from './db';
+import { runBackup } from './engine/backup';
+import type { LogEntry, TriggerType } from './engine/types';
+import { filesDir } from './paths';
 import { prisma } from './prisma';
 
-let jobIdCounter = 0;
-const jobs = new Map();
-
 /**
- * Builds the config object the v1 engine expects from the typed configs.
- * Goes away with the engine rewrite (Phase 2).
+ * In-process queue driving the engine. Kept close to the v1 shape (job ids, in-memory
+ * state) so the current API routes keep working; Phase 3 makes it DB-first.
  */
-function toLegacyConfig(site, github, sharepoint, basePath) {
-    return {
-        localPath: basePath,
-        filesPath: basePath + '/files/',
-        github: {
-            // Any username works with a GitHub token over HTTPS
-            user: 'x-access-token',
-            appPass: github?.token ?? '',
-            mail: github?.email ?? '',
-        },
-        sharepoint: sharepoint
-            ? {
-                tenantID: sharepoint.tenantId,
-                applicationClientID: sharepoint.clientId,
-                certificateThumbprint: sharepoint.certThumbprint,
-                tenantName: sharepoint.tenantName,
-                siteName: sharepoint.siteName,
-                listName: sharepoint.listName,
-                dateFieldName: sharepoint.dateField,
-            }
-            : undefined,
-        sites: {
-            [site.domain]: {
-                repo: site.repo,
-                repoUrl: site.repoUrl,
-                ftp: {
-                    webRootPath: site.webRootPath,
-                    host: site.host,
-                    user: site.username,
-                    password: site.password,
-                    port: site.port,
-                    sftp: site.protocol === 'sftp',
-                },
-                spListItemID: site.spListItemId,
-            },
-        },
-    };
+
+export type JobStatus = 'pending' | 'running' | 'complete' | 'error' | 'cancelled';
+
+export interface Job {
+    id: number;
+    siteId: number;
+    domain: string;
+    status: JobStatus;
+    backupId: number | null;
+    logLines: LogEntry[];
+    /** Resolves with the Backup row id once the job starts. */
+    started: Promise<number>;
 }
 
+interface InternalJob extends Job {
+    abort: AbortController | null;
+    run: () => Promise<void>;
+}
+
+export interface EnqueueOptions {
+    fullDownload?: boolean;
+    skipGit?: boolean;
+    triggerType?: TriggerType;
+}
+
+export interface LogEvent extends LogEntry {
+    jobId: number;
+    backupId: number | null;
+}
+
+export interface DoneEvent {
+    jobId: number;
+    backupId: number | null;
+    status: JobStatus;
+}
+
+let jobIdCounter = 0;
+const jobs = new Map<number, InternalJob>();
+
 class BackupQueue extends EventEmitter {
-    constructor(concurrency = 3) {
+    private running = 0;
+    private pending: InternalJob[] = [];
+
+    constructor(private readonly concurrency: number) {
         super();
         this.setMaxListeners(50);
-        this.concurrency = concurrency;
-        this.running = 0;
-        this.pending = [];
     }
 
-    async enqueue(siteId, basePath, options = {}) {
-        const jobId = ++jobIdCounter;
+    async enqueue(siteId: number, options: EnqueueOptions = {}): Promise<Job> {
         const site = await getSite(siteId);
         if (!site) throw new Error(`Site not found: ${siteId}`);
 
-        let resolveStarted;
-        const startedPromise = new Promise(r => { resolveStarted = r; });
-
-        const job = {
+        const jobId = ++jobIdCounter;
+        let resolveStarted!: (backupId: number) => void;
+        const job: InternalJob = {
             id: jobId,
             siteId,
             domain: site.domain,
             status: 'pending',
             backupId: null,
-            result: null,
             logLines: [],
-            started: startedPromise,
+            started: new Promise<number>(resolve => { resolveStarted = resolve; }),
+            abort: null,
+            run: async () => {
+                job.status = 'running';
+                job.abort = new AbortController();
+                const fullDownload = options.fullDownload === true;
+                const skipGit = options.skipGit === true;
+
+                const backup = await prisma.backup.create({
+                    data: { siteId, status: 'running', triggerType: options.triggerType ?? 'manual', fullDownload, skipGit, startedAt: new Date() },
+                });
+                job.backupId = backup.id;
+                resolveStarted(backup.id);
+
+                try {
+                    if (job.abort.signal.aborted) throw new Error('Backup cancelled');
+
+                    const [siteConfig, github, sharepoint] = await Promise.all([getSiteConfig(siteId), getGithubConfig(), getSharePointConfig()]);
+                    if (!siteConfig) throw new Error('Site was deleted');
+                    if (!github) throw new Error('GitHub token and email are not configured (Settings)');
+
+                    const result = await runBackup(siteConfig, github, sharepoint, {
+                        localRoot: path.join(filesDir(), siteConfig.repo),
+                        triggerType: options.triggerType ?? 'manual',
+                        fullDownload,
+                        skipGit,
+                        signal: job.abort.signal,
+                        onLog: entry => {
+                            job.logLines.push(entry);
+                            this.emit('log', { jobId, backupId: job.backupId, ...entry } satisfies LogEvent);
+                        },
+                    });
+
+                    await prisma.backup.update({
+                        where: { id: backup.id },
+                        data: {
+                            status: result.status,
+                            finishedAt: result.finishedAt,
+                            durationMs: result.durationMs,
+                            filesDownloaded: result.filesDownloaded,
+                            filesUnchanged: result.filesUnchanged,
+                            filesDeleted: result.filesDeleted,
+                            dumpSizeBytes: result.dumpSizeBytes,
+                            commitSha: result.commitSha,
+                            tag: result.tag,
+                            releaseUrl: result.releaseUrl,
+                            errorMessage: result.errorMessage,
+                            log: result.log,
+                        },
+                    });
+                    job.status = result.status === 'success' ? 'complete' : result.status;
+                } catch (error) {
+                    const cancelled = job.abort.signal.aborted;
+                    const message = error instanceof Error ? error.message : String(error);
+                    job.status = cancelled ? 'cancelled' : 'error';
+                    await prisma.backup.update({
+                        where: { id: backup.id },
+                        data: {
+                            status: job.status,
+                            finishedAt: new Date(),
+                            errorMessage: cancelled ? 'Cancelled by user' : message,
+                            log: job.logLines.map(l => `${l.time} [${l.level}] ${l.msg}`).join('\n'),
+                        },
+                    });
+                }
+
+                this.emit('done', { jobId, backupId: job.backupId, status: job.status } satisfies DoneEvent);
+                this.running--;
+                this.processNext();
+            },
         };
         jobs.set(jobId, job);
-
-        const run = async () => {
-            job.status = 'running';
-            job._abortController = new AbortController();
-
-            const fullDownload = !!options.fullDownload;
-            const skipGit = !!options.skipGit;
-
-            const backup = await prisma.backup.create({
-                data: {
-                    siteId,
-                    status: 'running',
-                    triggerType: options.triggerType || 'manual',
-                    fullDownload,
-                    skipGit,
-                    startedAt: new Date(),
-                },
-            });
-            job.backupId = backup.id;
-            resolveStarted(job.backupId);
-
-            try {
-                if (job._abortController.signal.aborted) throw new Error('Cancelled');
-
-                const [siteConfig, github, sharepoint] = await Promise.all([
-                    getSiteConfig(siteId),
-                    getGithubConfig(),
-                    getSharePointConfig(),
-                ]);
-                const config = toLegacyConfig(siteConfig, github, sharepoint, basePath);
-                const result = await backupSite(site.domain, config, {
-                    basePath,
-                    fullDownload,
-                    skipGit,
-                    signal: job._abortController.signal,
-                    onLog: (entry) => {
-                        job.logLines.push(entry);
-                        this.emit('log', { jobId, backupId: job.backupId, ...entry });
-                    },
-                });
-
-                await prisma.backup.update({
-                    where: { id: job.backupId },
-                    data: {
-                        finishedAt: result.finishedAt,
-                        status: result.status,
-                        durationMs: result.durationMs,
-                        filesDownloaded: result.filesDownloaded || 0,
-                        filesUnchanged: result.filesUnchanged || 0,
-                        filesDeleted: result.filesDeleted || 0,
-                        dumpSizeBytes: result.dumpSizeBytes || 0,
-                        commitSha: result.commitSha,
-                        errorMessage: result.error,
-                        log: result.log,
-                    },
-                });
-
-                job.status = 'complete';
-                job.result = result;
-            } catch (error) {
-                const isCancelled = error.message === 'Backup cancelled' || job.status === 'cancelled';
-                const status = isCancelled ? 'cancelled' : 'error';
-                await prisma.backup.update({
-                    where: { id: job.backupId },
-                    data: {
-                        finishedAt: new Date(),
-                        status,
-                        errorMessage: isCancelled ? 'Cancelled by user' : error.message,
-                        log: job.logLines.map(l => `${l.time} [${l.level}] ${l.msg}`).join('\n'),
-                    },
-                });
-                job.status = status;
-                job.result = { error: error.message };
-            }
-
-            this.emit('done', { jobId, backupId: job.backupId, status: job.status });
-            this.running--;
-            this._processNext();
-        };
-
-        job._run = run;
-        this.pending.push(run);
-        this._processNext();
-
+        this.pending.push(job);
+        this.processNext();
         return job;
     }
 
-    _processNext() {
+    private processNext(): void {
         while (this.running < this.concurrency && this.pending.length > 0) {
+            const job = this.pending.shift()!;
             this.running++;
-            const next = this.pending.shift();
-            next();
+            void job.run();
         }
     }
 
-    getJob(jobId) {
-        return jobs.get(jobId) || null;
+    getJob(jobId: number): Job | null {
+        return jobs.get(jobId) ?? null;
     }
 
-    cancelJob(jobId) {
+    /** Pending jobs are dropped; running jobs get their signal aborted and finish on their own. */
+    cancelJob(jobId: number): boolean {
         const job = jobs.get(jobId);
         if (!job) return false;
-
         if (job.status === 'pending') {
             job.status = 'cancelled';
-            this.pending = this.pending.filter(fn => fn !== job._run);
+            this.pending = this.pending.filter(j => j !== job);
             return true;
         }
-
-        if (job.status === 'running' && job._abortController) {
-            job._abortController.abort();
-            job.status = 'cancelled';
+        if (job.status === 'running' && job.abort) {
+            job.abort.abort();
             return true;
         }
-
         return false;
     }
 
-    getRunningJobs() {
+    getRunningJobs(): Job[] {
         return [...jobs.values()].filter(j => j.status === 'running');
     }
 
-    getPendingJobs() {
+    getPendingJobs(): Job[] {
         return [...jobs.values()].filter(j => j.status === 'pending');
     }
 }
 
-// Singleton
-export const backupQueue = new BackupQueue(3);
+export const backupQueue = new BackupQueue(2);

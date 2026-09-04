@@ -1,354 +1,175 @@
-import fs from 'fs';
-import crypto from 'crypto';
-import { exec } from 'child_process';
-import util from 'util';
-import axios from 'axios';
-import Sftp from './sftp.js';
-import Ftp from './ftp.js';
-import Sp from './sp.js';
-import Cleanup from './cleanup.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { errorMessage, isCancellation, throwIfAborted } from './cancel';
+import { DUMP_FILE_NAME, dumpDatabase } from './dump';
+import { commitAndTag, ensureRepo, formatTag, push, type GitContext } from './git';
+import { createRelease, formatReleaseBody, parseRepoUrl } from './github';
+import { createLogger } from './logger';
+import { createRemoteFactory, remoteRootDir, type RemoteClient } from './remote';
+import { updateSharePointItem } from './sharepoint';
+import { GITIGNORE_TEMPLATE, isBackupArtifact, syncFiles } from './sync';
+import type { BackupOptions, BackupOutcome, BackupResult, GithubConfig, Logger, SharePointConfig, SiteConfig } from './types';
 
-const execPromise = util.promisify(exec);
-
-/**
- * Creates a logger that captures output in a buffer while optionally forwarding to console.
- * @param {string} prefix - Prefix for each log line (e.g. "[dewwwe.com]")
- * @param {boolean} quiet - If true, don't forward to console (for parallel runs)
- */
-function createLogger(prefix, quiet = false, onLog = null) {
-    const lines = [];
-
-    function write(level, ...args) {
-        const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-        const line = `${prefix} ${msg}`;
-        const entry = { level, msg: line, time: new Date().toISOString() };
-        lines.push(entry);
-        if (!quiet) {
-            if (level === 'error') console.error(line);
-            else if (level === 'warn') console.warn(line);
-            else console.log(line);
-        }
-        if (onLog) onLog(entry);
-    }
-
-    return {
-        log: (...args) => write('info', ...args),
-        error: (...args) => write('error', ...args),
-        warn: (...args) => write('warn', ...args),
-        getLog: () => lines.map(l => `${l.time} [${l.level}] ${l.msg}`).join('\n'),
-        getLines: () => lines,
-    };
-}
+/** Workflow the v1 engine committed into every backup repo; Releases are now created by the app. */
+const LEGACY_WORKFLOW = path.join('.github', 'workflows', 'auto-tagged-release.yml');
+const LEGACY_DUMP = /^db_.*\.sql$/;
 
 /**
- * Run a backup for a single site.
- * @param {string} domain - Site domain (e.g. 'dewwwe.com')
- * @param {object} config - Full config object (github, sharepoint, sites)
- * @param {object} options
- * @param {string} options.basePath - Base path of the project (__dirname)
- * @param {boolean} options.fullDownload - Force full download instead of incremental
- * @param {boolean} options.quiet - Suppress console output (for parallel runs)
- * @returns {object} Backup result
+ * One full backup of one site. Never throws: the outcome is in `result.status`, with
+ * `errorMessage` and the complete log. Each step checks the abort signal.
  */
-export async function backupSite(domain, config, options = {}) {
-    const { basePath, fullDownload = false, skipGit = false, quiet = false, onLog = null, signal = null } = options;
-    const log = createLogger(`[${domain}]`, quiet, onLog);
+export async function runBackup(site: SiteConfig, github: GithubConfig, sharepoint: SharePointConfig | null, options: BackupOptions): Promise<BackupResult> {
+    const { localRoot, signal } = options;
+    const log = createLogger(`[${site.domain}]`, options.onLog);
     const startedAt = new Date();
+    const stats = { filesDownloaded: 0, filesUnchanged: 0, filesDeleted: 0, dumpSizeBytes: 0 };
+    let commitSha: string | null = null;
+    let tag: string | null = null;
+    let releaseUrl: string | null = null;
+    let status: BackupOutcome = 'success';
+    let errorText: string | null = null;
 
-    function checkCancelled() {
-        if (signal && signal.aborted) {
-            throw new Error('Backup cancelled');
-        }
-    }
-
-    // Wraps a promise so it rejects immediately if the abort signal fires
-    function cancellable(promise) {
-        if (!signal) return promise;
-        return Promise.race([
-            promise,
-            new Promise((_, reject) => {
-                if (signal.aborted) reject(new Error('Backup cancelled'));
-                signal.addEventListener('abort', () => reject(new Error('Backup cancelled')), { once: true });
-            }),
-        ]);
-    }
-
-    const result = {
-        domain,
-        status: 'success',
-        startedAt,
-        finishedAt: null,
-        durationMs: 0,
-        filesDownloaded: 0,
-        filesUnchanged: 0,
-        filesDeleted: 0,
-        dumpSizeBytes: 0,
-        commitSha: null,
-        log: '',
-        error: null,
-    };
-
-    const siteConfig = config.sites[domain];
-    if (!siteConfig) {
-        result.status = 'error';
-        result.error = `No config found for domain: ${domain}`;
-        log.error(result.error);
-        result.finishedAt = new Date();
-        result.durationMs = result.finishedAt - startedAt;
-        result.log = log.getLog();
-        return result;
-    }
-
-    const filesPath = basePath + '/files/';
-    const localSitePath = filesPath + siteConfig.repo + '/';
-    let connection;
-
-    function createConnection() {
-        if (siteConfig.ftp.sftp) {
-            return new Sftp(basePath, siteConfig, log);
-        } else {
-            return new Ftp(basePath, siteConfig, log);
-        }
-    }
+    const gitCtx: GitContext = { cwd: localRoot, email: github.email, token: github.token, signal };
+    const factory = createRemoteFactory(site);
+    const rootDir = remoteRootDir(site);
 
     try {
-        // Setup local folders
-        const clean = new Cleanup(basePath, siteConfig.repo);
-        let mySiteFolderExists = clean.setupFiles();
+        // 1. Local clone on the remote default branch, clean tree.
+        await ensureRepo(gitCtx, site.repoUrl, log);
+        throwIfAborted(signal);
+        prepareLocalTree(localRoot, site, log);
 
-        // Git pull / clone
-        let pullError = false;
-        if (mySiteFolderExists) {
-            log.log('Pulling ' + siteConfig.repo + '...');
-            try {
-                await execPromise('cd "' + localSitePath + '" && git pull', { maxBuffer: 1024 * 500000 });
-            } catch (error) {
-                log.error('Pull failed:', error.message);
-                pullError = true;
-            }
-        }
-
-        if (mySiteFolderExists && pullError) {
-            log.log('Pull failed, deleting folder and cloning again...');
-            fs.rmSync(localSitePath, { recursive: true, force: true });
-            mySiteFolderExists = false;
-        }
-
-        if (!mySiteFolderExists || pullError) {
-            log.log('Cloning ' + siteConfig.repo + '...');
-            const repoUrl = siteConfig.repoUrl;
-            let requestUrl;
-            if (repoUrl.indexOf('git@') === 0) {
-                requestUrl = repoUrl;
-            } else {
-                requestUrl = repoUrl.replace('https://', 'https://' + config.github.user + ':' + config.github.appPass + '@');
-            }
-            await execPromise('cd "' + filesPath + '" && git clone ' + requestUrl);
-        }
-
-        checkCancelled();
-
-        // Clean up leftover artifacts from previous runs
-        connection = createConnection();
-        log.log('Cleaning up old backup artifacts...');
+        // 2 + 3. Leftovers from an interrupted run, then the dump, on one connection.
+        const client = await factory.create();
         try {
-            const remoteFiles = await connection.listFiles();
-            const leftovers = remoteFiles.filter(f =>
-                f.name.startsWith('db_') && f.name.endsWith('.sql') ||
-                f.name === '.dewwwe-backup-token' ||
-                f.name === 'dewwwe-backup.php'
-            );
-            for (const file of leftovers) {
-                log.log('  Removing leftover: ' + file.name);
-                await connection.deleteFile(file.name);
-            }
-            if (leftovers.length === 0) log.log('  No leftovers found');
-        } catch (error) {
-            log.warn('Could not clean up leftovers:', error.message);
+            await removeRemoteLeftovers(client, rootDir, log);
+            throwIfAborted(signal);
+            const dump = await dumpDatabase(site, client, path.join(localRoot, DUMP_FILE_NAME), log, signal);
+            stats.dumpSizeBytes = dump.sizeBytes;
+        } finally {
+            await client.close().catch(() => undefined);
         }
+        throwIfAborted(signal);
 
-        // Generate and upload backup token (unique file per site to avoid conflicts in parallel runs)
-        const backupToken = crypto.randomBytes(32).toString('hex');
-        const tokenFilePath = basePath + '/helpers/.dewwwe-backup-token-' + domain.replace(/\./g, '-');
-        fs.writeFileSync(tokenFilePath, backupToken);
+        // 4. Files.
+        const sync = await syncFiles(factory, localRoot, rootDir, { mode: options.fullDownload ? 'full' : 'incremental', log, signal });
+        stats.filesDownloaded = sync.downloaded;
+        stats.filesUnchanged = sync.unchanged;
+        stats.filesDeleted = sync.deleted;
+        throwIfAborted(signal);
 
-        log.log('Uploading backup token and script...');
-        await connection.uploadFile(tokenFilePath, '.dewwwe-backup-token');
-        await connection.uploadFile(basePath + '/helpers/backup-wp.php', 'dewwwe-backup.php');
-        fs.unlinkSync(tokenFilePath);
-
-        checkCancelled();
-
-        // Trigger database dump
-        log.log('Dumping database...');
-        let dumpFileName = null;
-        try {
-            const backupResponse = await cancellable(axios.get('https://' + domain + '/dewwwe-backup.php?token=' + backupToken));
-            const backupData = backupResponse.data;
-
-            if (backupData.status !== 'ok' || !backupData.file) {
-                throw new Error('Database dump failed: ' + JSON.stringify(backupData));
-            }
-            dumpFileName = backupData.file;
-            log.log('Database dump successful: ' + dumpFileName);
-        } catch (error) {
-            try { await connection.deleteFile('dewwwe-backup.php'); } catch (e) { /* may have self-deleted */ }
-            try { await connection.deleteFile('.dewwwe-backup-token'); } catch (e) { /* may have been deleted */ }
-            throw new Error('Database dump failed: ' + error.message);
-        }
-
-        checkCancelled();
-
-        // Download files
-        let mustCommitGitignore = false;
-        let syncStats = { downloaded: 0, unchanged: 0, deleted: 0 };
-        if (fullDownload) {
-            log.log('Full download mode...');
-            mustCommitGitignore = clean.cleanupSiteFolder();
-            await cancellable(connection.download());
+        // 5 + 6. Snapshot and its Release.
+        if (options.skipGit) {
+            log.info('Skipping commit and push');
         } else {
-            log.log('Incremental download mode...');
-            mustCommitGitignore = clean.ensureGitFiles();
-            syncStats = await cancellable(connection.downloadChanged()) || syncStats;
-        }
-        result.filesDownloaded = syncStats.downloaded;
-        result.filesUnchanged = syncStats.unchanged;
-        result.filesDeleted = syncStats.deleted;
-
-        checkCancelled();
-
-        // Validate dump
-        const expectedDumpPath = localSitePath + siteConfig.ftp.webRootPath + '/' + dumpFileName;
-        if (!fs.existsSync(expectedDumpPath) || fs.statSync(expectedDumpPath).size < 1024) {
-            throw new Error('Downloaded dump file is missing or too small: ' + dumpFileName);
-        }
-        const dumpHead = fs.readFileSync(expectedDumpPath, { encoding: 'utf8', flag: 'r' }).substring(0, 500);
-        if (!dumpHead.includes('CREATE TABLE') && !dumpHead.includes('INSERT INTO') && !dumpHead.includes('MySQL dump') && !dumpHead.includes('mysqldump')) {
-            throw new Error('Downloaded dump file does not look like valid SQL');
-        }
-        result.dumpSizeBytes = fs.statSync(expectedDumpPath).size;
-        log.log('Dump file validated: ' + dumpFileName + ' (' + Math.round(result.dumpSizeBytes / 1024) + ' KB)');
-
-        // Clean up dump from remote
-        try {
-            await connection.deleteFile(dumpFileName);
-            log.log('Remote dump file cleaned up');
-        } catch (error) {
-            log.warn('Could not delete remote dump file:', error.message);
-        }
-
-        checkCancelled();
-
-        // Git commit & push & tag
-        if (skipGit) {
-            log.log('Skipping git commit/push (--no-git)');
-        } else {
-            log.log('Committing & pushing ' + siteConfig.repo + '...');
-            const date = new Date();
-            const mm = date.getMonth() + 1;
-            const dd = date.getDate();
-            const HH = date.getHours();
-            const MM = date.getMinutes();
-            const dateString = [date.getFullYear() +
-                (mm > 9 ? '' : '0') + mm,
-                (dd > 9 ? '' : '0') + dd,
-                (HH > 9 ? '' : '0') + HH +
-                (MM > 9 ? '' : '0') + MM
-            ].join('-');
-
-            try {
-                const gitSetupcmd = 'git config --global user.email "' + config.github.mail + '" && git config --global user.name "Auto Site Save" && git config --global http.postBuffer 157286400';
-                const cdCmd = ' && cd "' + localSitePath + '"';
-                let commitGitignore = '';
-                if (mustCommitGitignore) {
-                    commitGitignore = " && git add '.gitignore' && git commit -m 'adding gitignore' ";
-                }
-                const commitCmd = " && git add . && git commit -m 'Auto commit " + dateString + "'";
-                const tagCmd = ' && git tag ' + dateString.replaceAll('-', '.').replaceAll('.0', '.');
-                const pushCmd = ' && git push';
-                const pushTagCmd = ' && git push origin ' + dateString.replaceAll('-', '.').replaceAll('.0', '.');
-                await cancellable(execPromise(gitSetupcmd + cdCmd + commitGitignore + commitCmd + tagCmd + pushCmd + pushTagCmd, { maxBuffer: 1024 * 500000 }));
-
-                // Extract commit SHA
-                try {
-                    const { stdout: sha } = await execPromise('cd "' + localSitePath + '" && git rev-parse --short HEAD');
-                    result.commitSha = sha.trim();
-                } catch (e) { /* non-critical */ }
-
-                log.log('Git push successful' + (result.commitSha ? ' (' + result.commitSha + ')' : ''));
-            } catch (error) {
-                log.error('Git commit/push failed:', error.message);
-                result.status = 'error';
+            const now = new Date();
+            const commit = await commitAndTag(gitCtx, `Backup ${site.domain} ${now.toISOString()}`, formatTag(now), log);
+            commitSha = commit.commitSha;
+            tag = commit.tag;
+            await push(gitCtx, tag, log);
+            if (tag && commitSha) {
+                releaseUrl = await publishRelease(site, github, tag, {
+                    domain: site.domain,
+                    date: now,
+                    triggerType: options.triggerType,
+                    ...stats,
+                    durationMs: Date.now() - startedAt.getTime(),
+                    commitSha,
+                }, log);
             }
         }
-
-        // Update SharePoint List
-        if (!skipGit && config.sharepoint && siteConfig.spListItemID) {
-            try {
-                const sp = new Sp(basePath, config, log);
-                await sp.updateListItem(siteConfig.spListItemID);
-                log.log('SharePoint updated');
-            } catch (error) {
-                log.warn('SharePoint update failed:', error.message);
-            }
-        }
-
     } catch (error) {
-        const isCancelled = error.message === 'Backup cancelled';
-        if (isCancelled) {
-            log.warn('Backup cancelled by user');
-            result.status = 'cancelled';
+        if (isCancellation(error)) {
+            status = 'cancelled';
+            errorText = 'Cancelled by user';
+            log.warn('Backup cancelled');
         } else {
-            log.error('BACKUP FAILED:', error.message);
-            result.status = 'error';
+            status = 'error';
+            errorText = errorMessage(error);
+            log.error(`Backup failed: ${errorText}`);
         }
-        result.error = error.message;
     }
 
-    result.finishedAt = new Date();
-    result.durationMs = result.finishedAt - startedAt;
-    result.log = log.getLog();
+    // 7. Tracking list, only for a complete snapshot.
+    if (status === 'success' && sharepoint && site.spListItemId) {
+        try {
+            await updateSharePointItem(sharepoint, site.spListItemId, log);
+        } catch (error) {
+            log.warn(`SharePoint update failed: ${errorMessage(error)}`);
+        }
+    }
 
-    const elapsed = Math.round(result.durationMs / 1000);
-    const mins = Math.floor(elapsed / 60);
-    const secs = elapsed % 60;
-    const statusLabel = result.status === 'success' ? 'COMPLETE' : result.status === 'cancelled' ? 'CANCELLED' : 'FAILED';
-    log.log(`Backup ${statusLabel} — ${mins}m ${secs}s`);
-    result.log = log.getLog();
+    const finishedAt = new Date();
+    const durationMs = finishedAt.getTime() - startedAt.getTime();
+    const seconds = Math.round(durationMs / 1000);
+    log.info(`Backup ${status.toUpperCase()} in ${Math.floor(seconds / 60)}m ${seconds % 60}s`);
 
-    return result;
+    return {
+        status,
+        startedAt,
+        finishedAt,
+        durationMs,
+        ...stats,
+        commitSha,
+        tag,
+        releaseUrl,
+        errorMessage: errorText,
+        log: log.text(),
+    };
 }
 
-/**
- * Run backups for multiple sites with limited concurrency.
- * @param {string[]} domains - List of domains to backup
- * @param {object} config - Full config object
- * @param {object} options
- * @param {string} options.basePath
- * @param {boolean} options.fullDownload
- * @param {number} options.concurrency - Max parallel backups (default: 3)
- * @returns {object[]} Array of backup results
- */
-export async function backupMultiple(domains, config, options = {}) {
-    const { concurrency = 3, ...siteOptions } = options;
-    const results = [];
-    const queue = [...domains];
-
-    async function worker() {
-        while (queue.length > 0) {
-            const domain = queue.shift();
-            if (!domain) break;
-            const result = await backupSite(domain, config, siteOptions);
-            results.push(result);
+/** Removes what v1 left in the clone and makes sure the `.gitignore` exists. */
+function prepareLocalTree(localRoot: string, site: SiteConfig, log: Logger): void {
+    const workflow = path.join(localRoot, LEGACY_WORKFLOW);
+    if (fs.existsSync(workflow)) {
+        log.info('Removing legacy release workflow');
+        fs.rmSync(workflow);
+        for (const dir of [path.dirname(workflow), path.join(localRoot, '.github')]) {
+            if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
         }
     }
 
-    // Launch concurrent workers
-    const workers = [];
-    for (let i = 0; i < Math.min(concurrency, domains.length); i++) {
-        workers.push(worker());
+    const webRoot = path.join(localRoot, site.webRootPath);
+    if (fs.existsSync(webRoot)) {
+        for (const name of fs.readdirSync(webRoot)) {
+            if (LEGACY_DUMP.test(name)) {
+                log.info(`Removing legacy dump ${name}`);
+                fs.rmSync(path.join(webRoot, name));
+            }
+        }
     }
-    await Promise.all(workers);
 
-    return results;
+    const gitignore = path.join(localRoot, '.gitignore');
+    if (!fs.existsSync(gitignore)) {
+        log.info('Adding .gitignore');
+        fs.writeFileSync(gitignore, GITIGNORE_TEMPLATE);
+    }
+}
+
+/** Dump, script or token file left on the web root by an interrupted run. */
+async function removeRemoteLeftovers(client: RemoteClient, rootDir: string, log: Logger): Promise<void> {
+    try {
+        const leftovers = (await client.list(rootDir)).filter(entry => entry.type === 'file' && isBackupArtifact(path.posix.basename(entry.path)));
+        for (const entry of leftovers) {
+            log.info(`Removing leftover ${entry.path}`);
+            await client.remove(entry.path);
+        }
+    } catch (error) {
+        log.warn(`Could not clean up leftovers: ${errorMessage(error)}`);
+    }
+}
+
+/** A failed Release is a warning: the snapshot is pushed, only its shortcut is missing. */
+async function publishRelease(site: SiteConfig, github: GithubConfig, tag: string, stats: Parameters<typeof formatReleaseBody>[0], log: Logger): Promise<string | null> {
+    try {
+        const url = await createRelease(github.token, parseRepoUrl(site.repoUrl), tag, {
+            name: `Backup ${stats.date.toISOString().slice(0, 19).replace('T', ' ')} UTC`,
+            body: formatReleaseBody(stats),
+        });
+        log.info(`Release created: ${url}`);
+        return url;
+    } catch (error) {
+        log.warn(`Release creation failed: ${errorMessage(error)}`);
+        return null;
+    }
 }

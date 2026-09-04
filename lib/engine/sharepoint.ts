@@ -1,67 +1,35 @@
-import { SPDefault } from "@pnp/nodejs";
-import "@pnp/sp/webs/index.js";
-import "@pnp/sp/lists/index.js";
-import "@pnp/sp/items/index.js";
-import { readFileSync } from 'fs';
-// import { Configuration } from "@azure/msal-node";
-// import pkg from '@azure/msal-node';
-// const { Configuration } = pkg; 
-import { spfi } from "@pnp/sp";
+import fs from 'node:fs';
+import { MSAL, SPDefault } from '@pnp/nodejs';
+import { spfi } from '@pnp/sp';
+import '@pnp/sp/webs/index.js';
+import '@pnp/sp/lists/index.js';
+import '@pnp/sp/items/index.js';
+import type { Logger, SharePointConfig } from './types';
 
+/**
+ * Stamps the "last backup" date on the site's row in the SharePoint tracking list.
+ * App-only authentication with the certificate under SP_CERT_DIR.
+ */
+export async function updateSharePointItem(config: SharePointConfig, itemId: string, log: Logger): Promise<void> {
+    const id = Number(itemId);
+    if (!Number.isInteger(id) || id <= 0) throw new Error(`Invalid SharePoint item id: ${itemId}`);
 
-class Sp {
-    constructor(filesFolder = __dirname, config, logger = null) {
-        this.log = logger || { log: console.log, error: console.error, warn: console.warn };
-
-        this.log.log("Looking for SharePoint config...");
-
-        if (config.sharepoint && config.sharepoint.tenantID) {
-            this.log.log("Setting up SharePoint connection..."); 
-
-            this.buffer = readFileSync("./sp-certificates/key.pem");
-
-            this.config = {
+    const privateKey = fs.readFileSync(config.certPath, 'utf8');
+    const siteUrl = `https://${config.tenantName}.sharepoint.com/sites/${config.siteName}/`;
+    const sp = spfi(siteUrl).using(
+        SPDefault(),
+        MSAL(
+            {
                 auth: {
-                    authority: "https://login.microsoftonline.com/"+config.sharepoint.tenantID+"/",
-                    clientId: config.sharepoint.applicationClientID,
-                    clientCertificate: {
-                      thumbprint: config.sharepoint.certificateThumbprint,
-                      privateKey: this.buffer.toString(),
-                    },
+                    authority: `https://login.microsoftonline.com/${config.tenantId}/`,
+                    clientId: config.clientId,
+                    clientCertificate: { thumbprint: config.certThumbprint, privateKey },
                 },
-            };
-    
-            this.sp = spfi().using(SPDefault({
-                baseUrl: 'https://'+config.sharepoint.tenantName+'.sharepoint.com/sites/'+config.sharepoint.siteName+'/',
-                msal: {
-                    config: this.config,
-                    scopes: [ 'https://'+config.sharepoint.tenantName+'.sharepoint.com/.default' ]
-                }
-            }));
+            },
+            [`https://${config.tenantName}.sharepoint.com/.default`],
+        ),
+    );
 
-            this.listName = config.sharepoint.listName;
-            this.dateFieldName = config.sharepoint.dateFieldName;
-        } else {
-            this.log.log("No SharePoint config found.");
-        }
-    }
-
-    async updateListItem(itemID) {
-
-        if (this.listName) {
-
-            this.list = this.sp.web.lists.getByTitle(this.listName);
-    
-            const date = new Date();
-    
-            await this.list.items.getById(itemID).update({
-                [this.dateFieldName]: date.toISOString()
-            });
-
-            this.log.log("SharePoint list item " + itemID + " updated.");
-        }
-    }
-
+    await sp.web.lists.getByTitle(config.listName).items.getById(id).update({ [config.dateField]: new Date().toISOString() });
+    log.info(`SharePoint item ${id} updated`);
 }
-
-export default Sp;

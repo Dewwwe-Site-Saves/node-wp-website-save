@@ -1,6 +1,6 @@
 /**
- * Contracts between the database layer and the backup engine. The engine only ever sees
- * these decrypted, validated objects, never Prisma models.
+ * Contracts between the database layer, the job queue and the backup engine. The engine
+ * only ever sees these decrypted, validated objects, never Prisma models.
  */
 
 export type Protocol = 'ftp' | 'sftp';
@@ -33,4 +33,67 @@ export interface SharePointConfig {
     dateField: string;
     /** Absolute path to key.pem */
     certPath: string;
+}
+
+// ============ Logging ============
+
+export type LogLevel = 'info' | 'warn' | 'error';
+
+export interface LogEntry {
+    /** ISO 8601 */
+    time: string;
+    level: LogLevel;
+    msg: string;
+}
+
+export interface Logger {
+    info(msg: string): void;
+    warn(msg: string): void;
+    error(msg: string): void;
+}
+
+// ============ Runs ============
+
+export type TriggerType = 'manual' | 'scheduled';
+
+export type BackupOutcome = 'success' | 'error' | 'cancelled';
+
+export interface BackupOptions {
+    /** Absolute path of the site's clone (`<FILES_DIR>/<repo>`). */
+    localRoot: string;
+    triggerType: TriggerType;
+    /** Wipe the local tree and download everything instead of comparing size and mtime. */
+    fullDownload: boolean;
+    /** Skip commit, tag, push and Release. */
+    skipGit: boolean;
+    signal?: AbortSignal;
+    onLog?: (entry: LogEntry) => void;
+}
+
+export interface SyncStats {
+    scanned: number;
+    downloaded: number;
+    /** Files listed but not downloadable (permission, vanished, transfer error). */
+    failed: number;
+    unchanged: number;
+    deleted: number;
+    /** Remote directories that could not be listed. */
+    listErrors: number;
+}
+
+export interface BackupResult {
+    status: BackupOutcome;
+    startedAt: Date;
+    finishedAt: Date;
+    durationMs: number;
+    filesDownloaded: number;
+    filesUnchanged: number;
+    filesDeleted: number;
+    dumpSizeBytes: number;
+    commitSha: string | null;
+    tag: string | null;
+    releaseUrl: string | null;
+    errorMessage: string | null;
+    /** Full text log of the run. */
+    log: string;
 }

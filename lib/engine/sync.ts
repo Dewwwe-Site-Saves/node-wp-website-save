@@ -1,75 +1,245 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
+import { errorMessage, throwIfAborted } from './cancel';
+import type { RemoteClient, RemoteClientFactory, RemoteEntry } from './remote/client';
+import type { Logger, SyncStats } from './types';
 
-// Files/folders to never delete locally (managed by git/cleanup)
-const PRESERVED = new Set(['.git', '.gitignore', 'README.md', '.github']);
+/** Local root entries never touched by the sync (git metadata, the dump, the README). */
+export const PRESERVED = new Set(['.git', '.gitignore', 'README.md', 'db.sql']);
 
-/**
- * Check if a relative path is safe (no directory traversal).
- */
-export function isSafePath(relPath) {
+/** Written to the clone when it has no `.gitignore` yet. GitHub refuses files over 100 MB. */
+export const GITIGNORE_TEMPLATE = '# Files GitHub refuses (> 100 MB)\n*.mmdb\n';
+
+export const DUMP_SCRIPT_NAME = 'dewwwe-backup.php';
+export const TOKEN_FILE_NAME = '.dewwwe-backup-token';
+const DUMP_FILE_PATTERN = /^db_.*\.sql$/;
+
+/** Files the engine itself puts at the web root; never part of the synced tree. */
+export function isBackupArtifact(name: string): boolean {
+    return name === DUMP_SCRIPT_NAME || name === TOKEN_FILE_NAME || DUMP_FILE_PATTERN.test(name);
+}
+
+/** No traversal, no absolute path: safe to join under the local root. */
+export function isSafePath(relPath: string): boolean {
     const normalized = path.normalize(relPath);
-    return !normalized.startsWith('..') && !path.isAbsolute(normalized);
+    return normalized !== '..' && !normalized.startsWith(`..${path.sep}`) && !path.isAbsolute(normalized);
 }
 
 /**
- * Check if a remote file needs to be downloaded by comparing size and mtime.
- * Returns true if the file should be downloaded.
+ * Path of a remote entry inside the clone. The web root folder is kept (`www/...`), which
+ * is the layout of the existing repositories.
  */
-export function shouldDownload(localPath, remoteSize, remoteMtime) {
-    if (!fs.existsSync(localPath)) return true;
+export function toRelativePath(remotePath: string): string {
+    return remotePath.replace(/^\/+/, '');
+}
 
-    const localStat = fs.statSync(localPath);
-
-    // Different size → download
-    if (localStat.size !== remoteSize) return true;
-
-    // Remote is newer → download (with 2s tolerance for FTP mtime precision)
-    if (remoteMtime && remoteMtime.getTime() - localStat.mtimeMs > 2000) return true;
-
-    return false;
+export interface ScanResult {
+    files: RemoteEntry[];
+    /** Directories that could not be listed. */
+    listErrors: number;
 }
 
 /**
- * Delete local files that no longer exist on the remote.
- * remoteFiles should be a Set of relative paths (e.g. "www/wp-config.php").
+ * Breadth-first listing of `rootDir`, one worker per client. Unlistable directories are
+ * counted and skipped, so a partial scan is reported rather than thrown.
  */
-export function deleteOrphans(localBasePath, remoteFiles) {
-    let deleted = 0;
+export async function scanRemote(clients: RemoteClient[], rootDir: string, log: Logger, signal?: AbortSignal): Promise<ScanResult> {
+    const files: RemoteEntry[] = [];
+    const pending: string[] = [rootDir];
+    const waiters = new Set<() => void>();
+    let active = 0;
+    let listErrors = 0;
 
-    function walkLocal(dir, relativeTo) {
-        if (!fs.existsSync(dir)) return;
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const wakeAll = () => {
+        for (const wake of waiters) wake();
+        waiters.clear();
+    };
 
-        for (const entry of entries) {
-            // Skip preserved files at the root level
-            const relPath = path.relative(relativeTo, path.join(dir, entry.name));
-            const topLevel = relPath.split(path.sep)[0];
-            if (PRESERVED.has(topLevel)) continue;
-
-            const fullPath = path.join(dir, entry.name);
-
-            if (entry.isDirectory()) {
-                walkLocal(fullPath, relativeTo);
-                // Remove empty directories
-                try {
-                    const remaining = fs.readdirSync(fullPath);
-                    if (remaining.length === 0) {
-                        fs.rmdirSync(fullPath);
-                        deleted++;
+    async function worker(client: RemoteClient): Promise<void> {
+        for (;;) {
+            throwIfAborted(signal);
+            const dir = pending.shift();
+            if (dir === undefined) {
+                if (active === 0) return;
+                await new Promise<void>(resolve => waiters.add(resolve));
+                continue;
+            }
+            active++;
+            try {
+                for (const entry of await client.list(dir)) {
+                    const relPath = toRelativePath(entry.path);
+                    if (!isSafePath(relPath)) continue;
+                    if (entry.type === 'dir') {
+                        pending.push(entry.path);
+                    } else if (!(dir === rootDir && isBackupArtifact(path.posix.basename(entry.path)))) {
+                        files.push(entry);
+                        if (files.length % 500 === 0) log.info(`  ${files.length} files scanned...`);
                     }
-                } catch (e) { /* already removed */ }
-            } else {
-                if (!remoteFiles.has(relPath)) {
-                    fs.unlinkSync(fullPath);
-                    deleted++;
                 }
+            } catch (error) {
+                listErrors++;
+                log.warn(`  Could not list ${dir}: ${errorMessage(error)}`);
+            } finally {
+                active--;
+                wakeAll();
             }
         }
     }
 
-    walkLocal(localBasePath, localBasePath);
+    try {
+        await Promise.all(clients.map(worker));
+    } finally {
+        wakeAll();
+    }
+    return { files, listErrors };
+}
+
+export type SyncMode = 'incremental' | 'full';
+
+export interface SyncPlan {
+    toDownload: RemoteEntry[];
+    unchanged: number;
+    /** Relative paths of every remote file, for orphan deletion. */
+    remoteSet: Set<string>;
+}
+
+/** Tolerance on mtime comparison: FTP servers report seconds, some round. */
+const MTIME_TOLERANCE_MS = 2000;
+
+export function needsDownload(localPath: string, entry: RemoteEntry): boolean {
+    const stat = fs.statSync(localPath, { throwIfNoEntry: false });
+    if (!stat || !stat.isFile()) return true;
+    if (stat.size !== entry.size) return true;
+    return entry.mtime !== null && entry.mtime.getTime() - stat.mtimeMs > MTIME_TOLERANCE_MS;
+}
+
+export function planSync(localRoot: string, files: RemoteEntry[], mode: SyncMode): SyncPlan {
+    const toDownload: RemoteEntry[] = [];
+    const remoteSet = new Set<string>();
+    for (const entry of files) {
+        const relPath = toRelativePath(entry.path);
+        remoteSet.add(relPath);
+        if (mode === 'full' || needsDownload(path.join(localRoot, relPath), entry)) toDownload.push(entry);
+    }
+    return { toDownload, unchanged: files.length - toDownload.length, remoteSet };
+}
+
+export interface DownloadStats {
+    downloaded: number;
+    failed: number;
+}
+
+/** Downloads with one worker per client. A failed file is logged and counted, not fatal. */
+export async function downloadFiles(clients: RemoteClient[], localRoot: string, entries: RemoteEntry[], log: Logger, signal?: AbortSignal): Promise<DownloadStats> {
+    let next = 0;
+    let downloaded = 0;
+    let failed = 0;
+
+    async function worker(client: RemoteClient): Promise<void> {
+        for (;;) {
+            throwIfAborted(signal);
+            const entry = entries[next++];
+            if (!entry) return;
+            const localPath = path.join(localRoot, toRelativePath(entry.path));
+            try {
+                fs.mkdirSync(path.dirname(localPath), { recursive: true });
+                await client.download(entry.path, localPath);
+                downloaded++;
+                if (downloaded % 100 === 0) log.info(`  ${downloaded}/${entries.length} downloaded...`);
+            } catch (error) {
+                failed++;
+                log.warn(`  Skipped ${toRelativePath(entry.path)}: ${errorMessage(error)}`);
+            }
+        }
+    }
+
+    await Promise.all(clients.slice(0, Math.max(1, entries.length)).map(worker));
+    return { downloaded, failed };
+}
+
+/**
+ * Deletes local files absent from `remoteSet` (relative paths) and the directories left
+ * empty, never touching PRESERVED root entries. Returns the number of files removed.
+ */
+export function deleteOrphans(localRoot: string, remoteSet: ReadonlySet<string>): number {
+    let deleted = 0;
+
+    function walk(dir: string): void {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const fullPath = path.join(dir, entry.name);
+            const relPath = path.relative(localRoot, fullPath);
+            if (dir === localRoot && PRESERVED.has(entry.name)) continue;
+            if (entry.isDirectory()) {
+                walk(fullPath);
+                if (fs.readdirSync(fullPath).length === 0) fs.rmdirSync(fullPath);
+            } else if (!remoteSet.has(relPath.split(path.sep).join('/'))) {
+                fs.unlinkSync(fullPath);
+                deleted++;
+            }
+        }
+    }
+
+    if (fs.existsSync(localRoot)) walk(localRoot);
     return deleted;
 }
 
-export default { shouldDownload, deleteOrphans };
+export interface SyncOptions {
+    mode: SyncMode;
+    log: Logger;
+    signal?: AbortSignal;
+}
+
+/**
+ * Scan, plan, download, prune. Incremental mode keeps files it could not verify: when any
+ * directory failed to list, orphan deletion is skipped so a flaky listing never deletes a
+ * site from the backup. Full mode needs a complete listing and fails otherwise.
+ */
+export async function syncFiles(factory: RemoteClientFactory, localRoot: string, rootDir: string, options: SyncOptions): Promise<SyncStats> {
+    const { mode, log, signal } = options;
+    const clients = await openPool(factory);
+    try {
+        log.info(`Scanning remote files (${mode})...`);
+        const { files, listErrors } = await scanRemote(clients, rootDir, log, signal);
+        if (files.length === 0 && listErrors > 0) throw new Error('Could not list any remote file');
+        if (mode === 'full' && listErrors > 0) throw new Error(`Full download aborted: ${listErrors} directories could not be listed`);
+        log.info(`  ${files.length} files found`);
+        throwIfAborted(signal);
+
+        let deleted = 0;
+        if (mode === 'full') {
+            deleted = deleteOrphans(localRoot, new Set());
+            log.info(`  Local tree cleared (${deleted} files)`);
+        }
+
+        const plan = planSync(localRoot, files, mode);
+        log.info(`  ${plan.toDownload.length} files to download, ${plan.unchanged} unchanged`);
+        const { downloaded, failed } = await downloadFiles(clients, localRoot, plan.toDownload, log, signal);
+        throwIfAborted(signal);
+
+        if (mode === 'incremental') {
+            if (listErrors > 0) {
+                log.warn(`  Orphan deletion skipped: ${listErrors} directories could not be listed`);
+            } else {
+                deleted = deleteOrphans(localRoot, plan.remoteSet);
+            }
+        }
+
+        const stats: SyncStats = { scanned: files.length, downloaded, failed, unchanged: plan.unchanged, deleted, listErrors };
+        log.info(`Sync complete: ${downloaded} downloaded, ${plan.unchanged} unchanged, ${deleted} deleted${failed ? `, ${failed} failed` : ''}`);
+        return stats;
+    } finally {
+        await Promise.allSettled(clients.map(client => client.close()));
+    }
+}
+
+/** Opens `poolSize` connections; closes the ones opened if any fails. */
+async function openPool(factory: RemoteClientFactory): Promise<RemoteClient[]> {
+    const results = await Promise.allSettled(Array.from({ length: factory.poolSize }, () => factory.create()));
+    const clients = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+    const failure = results.find(r => r.status === 'rejected');
+    if (failure) {
+        await Promise.allSettled(clients.map(client => client.close()));
+        throw failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason));
+    }
+    return clients;
+}
