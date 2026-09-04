@@ -5,6 +5,7 @@ node_modules
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+!.vscode/cspell.json
 
 # Claude Code: project settings are shared, local overrides are not
 .claude/settings.local.json
