@@ -6,21 +6,31 @@ Self-hosted backup manager for WordPress sites: pulls files over FTP/SFTP, dumps
 
 Working branch is `v2`. [PLAN.md](./PLAN.md) is the source of truth for scope and ordering — check which phase covers a feature before proposing it.
 
-- Phases 0, 1 and 2a are committed.
-- Phase 2b is the current work: `dump.ts`, `sharepoint.ts` (PnP v4), `backup.ts` orchestrator, rewiring `lib/queue.js` onto the new engine, deleting the v1 files.
+- Phases 0, 1 and 2 are committed. The v1 engine is gone; the app runs on `lib/engine` through `lib/queue.ts`.
+- Phase 3 is next: DB-first queue (`lib/jobs/queue.ts`, the `Backup` row is created at enqueue time so `jobId` disappears), `scheduler.ts` on node-cron, `instrumentation.ts` for boot (orphan job sweep, retention).
+- Real-site checks still pending before the Docker rollout are listed at the end of Phase 2 in PLAN.md (full download, SFTP, SharePoint with PnP v4, the other sites).
 
-## Two engines coexist right now
+## Engine
 
-- `lib/engine/*.ts` — the v2 engine. All new engine code goes here.
-- `lib/backup.js`, `cleanup.js`, `ftp.js`, `queue.js`, `sftp.js`, `sp.js`, `sync.js` — **v1, still wired behind `queue.js` until 2b lands.** Do not extend these; they get deleted. Known v1 issues (shell injection, token in the clone URL, `git config --global`, SFTP re-downloading everything) are already fixed in `lib/engine` — don't re-fix them in the v1 files.
+`lib/engine` is pure TypeScript: no Next.js import, no Prisma import, no ambient config. It only sees the decrypted `SiteConfig` / `GithubConfig` / `SharePointConfig` objects from `lib/engine/types.ts`.
+
+- `backup.ts` — `runBackup(site, github, sharepoint, options)` is the single entry point. It never throws: the outcome is `result.status` (`success` | `error` | `cancelled`) plus `errorMessage` and the full log. The queue copies the result as-is.
+- `git.ts` — `execFile` with array arguments, identity and credentials passed per invocation with `-c`. The token reaches git through an inline `credential.helper` reading `GIT_BACKUP_TOKEN` from the environment (no `GIT_ASKPASS` file), never through a URL. Errors are built from stderr only.
+- `remote/` — `RemoteClient` interface, FTP (basic-ftp, 5 connections) and SFTP (ssh2-sftp-client, 3 connections, one worker per connection). Remote paths are absolute; the local tree keeps the web root folder (`www/...`).
+- `sync.ts` — scan, plan, download, prune. Orphan deletion is skipped when any directory failed to list; full mode refuses a partial listing.
+- `dump.ts` — token hash + `helpers/backup-wp.php` uploaded from memory, HTTPS trigger with `redirect: 'manual'`, dump downloaded to `<clone>/db.sql` and validated, remote artifacts removed in `finally`.
+- `sharepoint.ts` — PnP v4, `SPDefault()` + `MSAL()` behaviors, certificate under `DATA_DIR/sp-certificates/key.pem`. Failure is a warning.
+- Cancellation: check `options.signal` between steps and files with `throwIfAborted`, wrap long calls with `abortable`, detect with `isCancellation` (`lib/engine/cancel.ts`).
+- Tests use `lib/engine/testing/fake-remote.ts` (in-memory `RemoteClient`), a real git binary on temp bare repos (with `GIT_CONFIG_GLOBAL=/dev/null`) and `vi.stubGlobal('fetch', ...)`. `scripts/smoke-sync.ts` (untracked on purpose) runs a read-only scan against a real site.
 
 ## Layout
 
 - `app/` — Next.js 16 App Router (pages + `api/` routes)
 - `components/` — React components, `components/ui` is shadcn
-- `lib/` — `db.ts`, `prisma.ts`, `crypto.ts`, `validation.ts` (zod), `paths.ts`
+- `lib/` — `db.ts`, `prisma.ts`, `crypto.ts`, `validation.ts` (zod), `paths.ts`, `queue.ts`
+- `lib/engine/` — the backup engine, see above
 - `prisma/` — schema and migrations
-- `helpers/backup-wp.php` — dropped on the remote host to dump the database
+- `helpers/backup-wp.php` — dropped on the remote host to dump the database, read at each run from `<cwd>/helpers`
 - `scripts/` — one-off `tsx` scripts
 
 ## Commands
@@ -35,23 +45,26 @@ Run `typecheck` and `test` yourself after changing engine or lib code. Anything 
 
 There is no ESLint here on purpose: `eslint-config-next` pulls in typescript-eslint, which refuses to load under TypeScript 7 ([typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940)) — the guard is in `@typescript-eslint/parser` too, so no TS parser is available at all. Prettier handles formatting and `tsc --strict` covers most of what the rules would catch. Don't re-add ESLint until that issue lands.
 
+Spell checking: Code Spell Checker reads `.vscode/cspell.json`. Add project vocabulary there rather than sprinkling `cspell:ignore` comments.
+
 ## Conventions
 
-- 4-space indent, single quotes, semicolons — Prettier enforces it.
+- 4-space indent, single quotes, semicolons, `printWidth` 100 — Prettier enforces it, run `npm run format` before proposing a commit.
 - Never hard-wrap prose at a fixed width, in markdown or in comments. One paragraph is one line.
 - Code, identifiers, comments and **UI labels** in English.
 - Imports use the `@/*` alias, not relative paths (`importModuleSpecifier: non-relative`).
-- Dates stored as ISO 8601 UTC.
+- Dates stored as ISO 8601 UTC. Git tags are `YYYYMMDD-HHmmss` in UTC.
 - Stored credentials are encrypted as `enc:v1:<iv>:<tag>:<data>` via `lib/crypto.ts` — never write a secret to the database in clear.
-- All runtime state lives under `DATA_DIR` (env var, falls back to `cwd/data`). Never build paths from `__dirname` — it breaks the Docker standalone build.
+- All runtime state lives under `DATA_DIR` (env var, falls back to `cwd/data`): database, `files/<repo>` clones, `sp-certificates/`. Never build paths from `__dirname` — it breaks the Docker standalone build.
 - Tests are vitest, colocated as `*.test.ts` next to the module.
 
 ## Do not touch
 
-`.env`, `data/`, `files/`, `sp-certificates/` hold live secrets and 7 sites' worth of real backups. They are gitignored and denied in `.claude/settings.json`.
+`.env`, `data/` and the legacy `config.json` hold live secrets and 7 sites' worth of real backups. They are gitignored and denied in `.claude/settings.json`.
 
 ## Working style
 
-- One phase per session, one commit at the end. Run `/code-review` before that commit.
+- One phase per session. Prefer a few well-scoped commits over one big one, and a pure-rename commit before rewriting a file so `git log --follow` keeps its history. Run `/code-review` before the final commit.
 - Never commit or push — propose the message and the `git add` command, Louis commits.
 - Don't add a dependency without asking first.
+- End every session by bringing the docs back in line with what was actually done: this file (state of the rewrite, engine notes, conventions), `README.md` (how it works, roadmap checkboxes) and `PLAN.md` (pending checks, deviations from the plan). Stale knowledge is worse than none.

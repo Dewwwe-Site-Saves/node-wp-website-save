@@ -61,13 +61,13 @@ openssl rsa -in keytmp.pem -out key.pem -passin pass:HereIsMySuperPass
 
 The app runs the following steps for each site:
 
-1. **Git pull/clone** the backup repo
+1. **Git clone or fetch** the backup repo and reset it on the remote default branch
 2. **Cleanup leftover artifacts** — removes old SQL dumps, tokens and PHP scripts left by previous runs on the remote server
 3. **Token authentication** — generates a unique token, uploads its hash via FTP/SFTP
-4. **Database dump** — uploads `backup-wp.php` to the site, triggers it via HTTP with the token. The PHP script self-deletes after execution
-5. **Dump download & validation** — downloads the SQL file right away, verifies it is not empty and contains valid SQL, deletes it from the remote server
-6. **Incremental download** — scans remote files and only downloads those that changed (different size or modification date). FTP scanning uses a pool of 5 parallel connections
-7. **Git commit, tag & push** — automatic commit with dated tag
+4. **Database dump** — uploads `backup-wp.php` to the site, triggers it via HTTPS with the token in a header. The PHP script self-deletes after execution
+5. **Dump download & validation** — downloads the SQL file right away to `db.sql` at the root of the repo, verifies it is not empty and contains valid SQL, deletes it from the remote server
+6. **Incremental download** — scans remote files and only downloads those that changed (different size or modification date). FTP uses a pool of 5 parallel connections, SFTP 3
+7. **Git commit, tag & push** — one commit per run with a UTC tag (`YYYYMMDD-HHmmss`); nothing is committed when nothing changed
 8. **GitHub release** — one release per backup on the tag, with the run stats
 9. **SharePoint update** — updates the last backup date in the SharePoint list (optional)
 
@@ -80,7 +80,7 @@ The app runs the following steps for each site:
 - The PHP script self-deletes after execution
 - The dump filename is unguessable and the dump is deleted from the server right after download
 - MySQL password is passed through the environment, never on the command line
-- Git commands run without a shell, the GitHub token never appears in URLs or logs
+- Git commands run without a shell, the GitHub token is handed to git through the environment and never appears in URLs, in `.git/config` or in logs
 - A safeguard automatically cleans up orphaned artifacts at the start of each run
 
 ## Incremental vs full mode
@@ -91,7 +91,7 @@ By default, backups run in **incremental** mode:
 - Deletes local files that no longer exist on the remote (skipped if part of the remote listing failed)
 - FTP scanning uses a pool of 5 parallel connections for faster listing
 
-The "Full download" option forces a complete download of all files.
+The "Full download" option clears the local tree and downloads every file again. It refuses to run when part of the remote listing failed, so a partial snapshot never replaces a complete one.
 
 ## Multi-site support
 
@@ -126,11 +126,11 @@ If something goes wrong with a site, delete `$DATA_DIR/files/your-site` and re-r
 - [x] Real-time log streaming during backup (SSE)
 
 ### In progress (v2)
-- [ ] Prisma data model + migrations
-- [ ] Password encryption at rest (AES-256)
+- [x] Prisma data model + migrations
+- [x] Password encryption at rest (AES-256)
+- [x] Engine rewrite (TypeScript, no shell, GitHub token through the environment)
+- [x] GitHub releases created by the app
 - [ ] Login + first-run setup
-- [ ] Engine rewrite (TypeScript, no shell, HTTPS token via `GIT_ASKPASS`)
-- [ ] GitHub releases created by the app
 - [ ] Scheduled backups via node-cron (per-site cron schedule, configurable via UI)
 - [ ] Settings page + test connection
 - [ ] Docker deployment for Synology NAS (standalone Next.js image)
