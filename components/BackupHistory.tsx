@@ -23,7 +23,7 @@ interface RunningJob {
 }
 
 type ModalState =
-    | { mode: 'live'; jobId: number; domain: string; siteId: number }
+    | { mode: 'live'; backupId: number; domain: string; siteId: number }
     | { mode: 'history'; backup: BackupWithDomain };
 
 export function BackupHistory({
@@ -65,7 +65,7 @@ export function BackupHistory({
         if (runningJob) {
             setModal({
                 mode: 'live',
-                jobId: runningJob.id,
+                backupId: runningJob.id,
                 domain: runningJob.domain,
                 siteId: backup.siteId,
             });
@@ -74,7 +74,7 @@ export function BackupHistory({
         }
     }
 
-    // Jobs known to the queue but not yet visible as a DB row on this page
+    // Active backups queued since this page was rendered, not yet in its rows
     const relevantRunning = siteId ? runningJobs.filter((j) => j.siteId === siteId) : runningJobs;
     const runningSiteIds = new Set(
         backups.filter((b) => b.status === 'running').map((b) => b.siteId),
@@ -105,7 +105,7 @@ export function BackupHistory({
                                 onClick={() =>
                                     setModal({
                                         mode: 'live',
-                                        jobId: job.id,
+                                        backupId: job.id,
                                         domain: job.domain,
                                         siteId: job.siteId,
                                     })
@@ -193,7 +193,7 @@ export function BackupHistory({
             {modal?.mode === 'live' && (
                 <LogModal
                     mode="live"
-                    jobId={modal.jobId}
+                    backupId={modal.backupId}
                     domain={modal.domain}
                     siteId={modal.siteId}
                     onClose={() => {

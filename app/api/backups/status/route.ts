@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server';
-import { backupQueue } from '@/lib/jobs/queue';
+import { listActiveBackups } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+    const active = await listActiveBackups();
+    const summary = ({ id, siteId, domain }: (typeof active)[number]) => ({ id, siteId, domain });
     return NextResponse.json({
-        running: backupQueue
-            .getRunningJobs()
-            .map((j) => ({ id: j.id, siteId: j.siteId, domain: j.domain })),
-        pending: backupQueue
-            .getPendingJobs()
-            .map((j) => ({ id: j.id, siteId: j.siteId, domain: j.domain })),
+        running: active.filter((b) => b.status === 'running').map(summary),
+        pending: active.filter((b) => b.status === 'pending').map(summary),
     });
 }

@@ -5,6 +5,7 @@ import { decrypt, encrypt } from './crypto';
 import type { GithubConfig, Protocol, SharePointConfig, SiteConfig } from './engine/types';
 import { spCertDir } from './paths';
 import { prisma } from './prisma';
+import { ACTIVE_STATUSES } from './validation';
 import type { BackupsQuery, SiteCreateInput, SiteUpdateInput } from './validation';
 
 // ============ Sites ============
@@ -108,6 +109,28 @@ export function getBackup(id: number): Promise<BackupWithDomain | null> {
         where: { id },
         include: { site: { select: { domain: true } } },
     });
+}
+
+export interface ActiveBackup {
+    id: number;
+    siteId: number;
+    domain: string;
+    status: 'pending' | 'running';
+}
+
+/** Backups still in the queue or executing, oldest first. The queue state is the database. */
+export async function listActiveBackups(): Promise<ActiveBackup[]> {
+    const rows = await prisma.backup.findMany({
+        where: { status: { in: [...ACTIVE_STATUSES] } },
+        select: { id: true, siteId: true, status: true, site: { select: { domain: true } } },
+        orderBy: { id: 'asc' },
+    });
+    return rows.map((row) => ({
+        id: row.id,
+        siteId: row.siteId,
+        domain: row.site.domain,
+        status: row.status as ActiveBackup['status'],
+    }));
 }
 
 // ============ Settings ============

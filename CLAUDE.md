@@ -6,8 +6,8 @@ Self-hosted backup manager for WordPress sites: pulls files over FTP/SFTP, dumps
 
 Working branch is `v2`. [PLAN.md](./PLAN.md) is the source of truth for scope and ordering — check which phase covers a feature before proposing it.
 
-- Phases 0, 1 and 2 are committed. The v1 engine is gone; the app runs on `lib/engine` through `lib/queue.ts`.
-- Phase 3 is next: DB-first queue (`lib/jobs/queue.ts`, the `Backup` row is created at enqueue time so `jobId` disappears), `scheduler.ts` on node-cron, `instrumentation.ts` for boot (orphan job sweep, retention).
+- Phases 0 to 3 are committed. The v1 engine is gone; the app runs on `lib/engine` through `lib/jobs/queue.ts`, scheduled by `lib/jobs/scheduler.ts`, booted by `instrumentation.ts`.
+- Phase 4 is next: auth and first-run setup, the API routes renamed around the Backup id, settings page, UI hooks. The Phase 3 section of PLAN.md lists what deviates from the plan (in-process enqueue lock, boot logic in `lib/jobs/boot.ts`, routes still on their Phase 2 URLs).
 - Real-site checks still pending before the Docker rollout are listed at the end of Phase 2 in PLAN.md (full download, SFTP, SharePoint with PnP v4, the other sites).
 
 ## Engine
@@ -27,7 +27,9 @@ Working branch is `v2`. [PLAN.md](./PLAN.md) is the source of truth for scope an
 
 - `app/` — Next.js 16 App Router (pages + `api/` routes)
 - `components/` — React components, `components/ui` is shadcn
-- `lib/` — `db.ts`, `prisma.ts`, `crypto.ts`, `validation.ts` (zod), `paths.ts`, `queue.ts`
+- `lib/` — `db.ts`, `prisma.ts`, `crypto.ts`, `validation.ts` (zod), `paths.ts`
+- `lib/jobs/` — `queue.ts`: DB-first queue. The `Backup` row is the job; in memory only the `AbortController` and the log buffer of the runs in progress. `enqueue` throws `BackupConflictError` when the site already has an active backup, `cancel` marks a pending row or aborts a running one, `events` emits `log` / `done` for SSE. `scheduler.ts`: one node-cron task per enabled site, `reload()` rebuilds them from the database and must be called after every site or settings mutation. `boot.ts`: called once by `instrumentation.ts` (env check, `initDatabase`, orphan job sweep, scheduler, daily retention).
+- `lib/testing/db.ts` — throwaway SQLite database for tests that run Prisma for real (temp `DATA_DIR`, migrations replayed); import it before anything that touches the database.
 - `lib/engine/` — the backup engine, see above
 - `prisma/` — schema and migrations
 - `helpers/backup-wp.php` — dropped on the remote host to dump the database, read at each run from `<cwd>/helpers`

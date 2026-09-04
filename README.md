@@ -97,6 +97,8 @@ The "Full download" option clears the local tree and downloads every file again.
 
 Backups run through a queue with limited concurrency (configurable in Settings). Each site has its own log, stored with the run and streamed live in the UI. A site can't have two backups running at the same time.
 
+Every enabled site is scheduled with node-cron, on its own cron expression or the global default, in the `TZ` timezone. Old runs are pruned daily once past the retention period; the last 5 of each site are always kept.
+
 ## Error handling
 
 - A backup never crashes the app — every run ends with a status (`success`, `error`, `cancelled`) and its log
@@ -131,7 +133,7 @@ If something goes wrong with a site, delete `$DATA_DIR/files/your-site` and re-r
 - [x] Engine rewrite (TypeScript, no shell, GitHub token through the environment)
 - [x] GitHub releases created by the app
 - [ ] Login + first-run setup
-- [ ] Scheduled backups via node-cron (per-site cron schedule, configurable via UI)
+- [x] Scheduled backups via node-cron (per-site cron schedule, global default in Settings)
 - [ ] Settings page + test connection
 - [ ] Docker deployment for Synology NAS (standalone Next.js image)
 

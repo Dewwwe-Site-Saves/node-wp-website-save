@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { jsonError, parseBody } from '@/lib/api';
 import { deleteSite, getSite, isUniqueViolation, listBackups, updateSite } from '@/lib/db';
+import * as scheduler from '@/lib/jobs/scheduler';
 import { backupsQuerySchema, parseId, siteUpdateSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,9 @@ export async function PUT(request: Request, { params }: Params) {
     if (response) return response;
 
     try {
-        return NextResponse.json(await updateSite(site.id, data));
+        const updated = await updateSite(site.id, data);
+        await scheduler.reload();
+        return NextResponse.json(updated);
     } catch (error) {
         if (isUniqueViolation(error)) {
             return jsonError(409, 'A site with this domain or repository name already exists');
@@ -40,5 +43,6 @@ export async function DELETE(request: Request, { params }: Params) {
     if (!site) return jsonError(404, 'Site not found');
 
     await deleteSite(site.id);
+    await scheduler.reload();
     return NextResponse.json({ success: true });
 }

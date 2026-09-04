@@ -30,10 +30,10 @@ interface RunModeProps {
     onClose: () => void;
 }
 
-// --- Live mode: stream logs for a running job ---
+// --- Live mode: stream logs for a running backup ---
 interface LiveModeProps {
     mode: 'live';
-    jobId: number;
+    backupId: number;
     domain: string;
     siteId?: number;
     onClose: () => void;
@@ -78,7 +78,6 @@ export function LogModal(props: LogModalProps) {
 function RunContent({ siteId, domain, onClose }: RunModeProps) {
     const [fullDownload, setFullDownload] = useState(false);
     const [skipGit, setSkipGit] = useState(false);
-    const [jobId, setJobId] = useState<number | null>(null);
     const [backupId, setBackupId] = useState<number | null>(null);
     const [starting, setStarting] = useState(false);
     const [startedAt, setStartedAt] = useState<string | null>(null);
@@ -95,8 +94,7 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
                 body: JSON.stringify({ fullDownload, skipGit }),
             });
             const data = await res.json();
-            if (data.jobId) {
-                setJobId(data.jobId);
+            if (data.backupId) {
                 setBackupId(data.backupId);
                 setStartedAt(new Date().toISOString());
                 setRunStatus('running');
@@ -109,8 +107,8 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
     }
 
     async function handleCancel() {
-        if (!jobId) return;
-        await fetch(`/api/backups/cancel/${jobId}`, { method: 'POST' });
+        if (!backupId) return;
+        await fetch(`/api/backups/cancel/${backupId}`, { method: 'POST' });
         setRunStatus('cancelled');
     }
 
@@ -140,10 +138,10 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
                 siteId={siteId}
                 status={runStatus}
                 onClose={onClose}
-                onCancel={jobId ? handleCancel : undefined}
+                onCancel={backupId ? handleCancel : undefined}
             />
             <div className="flex-1 overflow-y-auto">
-                {!jobId ? (
+                {!backupId ? (
                     <div className="p-4 space-y-4">
                         <div className="flex items-center justify-between">
                             <div>
@@ -178,7 +176,7 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
                             {...stats}
                         />
                         <CollapsibleLog open={logOpen} onToggle={() => setLogOpen(!logOpen)}>
-                            <LogStream jobId={jobId} onStatusChange={handleStatusChange} />
+                            <LogStream backupId={backupId} onStatusChange={handleStatusChange} />
                         </CollapsibleLog>
                     </>
                 )}
@@ -189,12 +187,12 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
 
 // ============ Live Mode ============
 
-function LiveContent({ jobId, domain, siteId, onClose }: LiveModeProps) {
+function LiveContent({ backupId, domain, siteId, onClose }: LiveModeProps) {
     const [runStatus, setRunStatus] = useState<string>('running');
     const [logOpen, setLogOpen] = useState(true);
 
     async function handleCancel() {
-        await fetch(`/api/backups/cancel/${jobId}`, { method: 'POST' });
+        await fetch(`/api/backups/cancel/${backupId}`, { method: 'POST' });
         setRunStatus('cancelled');
     }
 
@@ -210,7 +208,7 @@ function LiveContent({ jobId, domain, siteId, onClose }: LiveModeProps) {
             <div className="flex-1 overflow-y-auto">
                 <RunInfo status={runStatus} trigger="manual" />
                 <CollapsibleLog open={logOpen} onToggle={() => setLogOpen(!logOpen)}>
-                    <LogStream jobId={jobId} onStatusChange={setRunStatus} />
+                    <LogStream backupId={backupId} onStatusChange={setRunStatus} />
                 </CollapsibleLog>
             </div>
         </>
@@ -340,7 +338,7 @@ function ModalHeader({
             <Badge variant="outline" className="animate-pulse border-primary text-primary">
                 RUNNING
             </Badge>
-        ) : status === 'success' || status === 'complete' ? (
+        ) : status === 'success' ? (
             <Badge variant="default">SUCCESS</Badge>
         ) : status === 'cancelled' ? (
             <Badge variant="secondary">CANCELLED</Badge>
@@ -481,10 +479,10 @@ function CollapsibleLog({
 }
 
 function LogStream({
-    jobId,
+    backupId,
     onStatusChange,
 }: {
-    jobId: number;
+    backupId: number;
     onStatusChange?: (status: string) => void;
 }) {
     const [lines, setLines] = useState<LogEntry[]>([]);
@@ -498,7 +496,7 @@ function LogStream({
 
     useEffect(() => {
         setLines([]);
-        const source = new EventSource(`/api/backups/logs/${jobId}`);
+        const source = new EventSource(`/api/backups/logs/${backupId}`);
 
         source.onmessage = (event) => {
             const data = JSON.parse(event.data);
@@ -511,17 +509,15 @@ function LogStream({
                 setStatus(data.status);
                 onStatusChangeRef.current?.(data.status);
             } else if (data.type === 'done') {
-                // The queue still says "complete" for a successful run; every other status is already the stored one.
-                const finalStatus = data.status === 'complete' ? 'success' : data.status;
-                setStatus(finalStatus);
-                onStatusChangeRef.current?.(finalStatus);
+                setStatus(data.status);
+                onStatusChangeRef.current?.(data.status);
                 source.close();
             }
         };
 
         source.onerror = () => source.close();
         return () => source.close();
-    }, [jobId]);
+    }, [backupId]);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });

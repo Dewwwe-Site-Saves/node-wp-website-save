@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { jsonError } from '@/lib/api';
 import { listSites } from '@/lib/db';
-import { backupQueue } from '@/lib/jobs/queue';
+import { BackupConflictError, enqueue } from '@/lib/jobs/queue';
 
 export async function POST() {
     const sites = (await listSites()).filter((site) => site.enabled);
@@ -9,13 +9,16 @@ export async function POST() {
         return jsonError(400, 'No active sites');
     }
 
-    const jobs = [];
+    const queued: { backupId: number; domain: string }[] = [];
+    const conflicts: { siteId: number; domain: string }[] = [];
     for (const site of sites) {
-        if (backupQueue.getRunningJobs().some((j) => j.siteId === site.id)) continue;
-
-        const job = await backupQueue.enqueue(site.id);
-        jobs.push({ jobId: job.id, domain: job.domain, status: job.status });
+        try {
+            queued.push({ backupId: await enqueue(site.id), domain: site.domain });
+        } catch (error) {
+            if (!(error instanceof BackupConflictError)) throw error;
+            conflicts.push({ siteId: site.id, domain: site.domain });
+        }
     }
 
-    return NextResponse.json({ jobs });
+    return NextResponse.json({ queued, conflicts });
 }

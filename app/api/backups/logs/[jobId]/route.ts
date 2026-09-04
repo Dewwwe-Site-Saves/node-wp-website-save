@@ -1,60 +1,46 @@
-import { backupQueue } from '@/lib/jobs/queue';
+import { getBackup } from '@/lib/db';
+import { events, getLogLines, type DoneEvent, type LogEvent } from '@/lib/jobs/queue';
+import { ACTIVE_STATUSES, parseId, type BackupStatus } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, { params }: { params: Promise<{ jobId: string }> }) {
-    const { jobId } = await params;
-    const id = parseInt(jobId);
-
-    const job = backupQueue.getJob(id);
-    if (!job) {
-        return new Response('Job not found', { status: 404 });
+    const id = parseId((await params).jobId);
+    const backup = id ? await getBackup(id) : null;
+    if (!backup) {
+        return new Response('Backup not found', { status: 404 });
     }
 
     const encoder = new TextEncoder();
+    const backupId = backup.id;
+    const status = backup.status as BackupStatus;
 
     const stream = new ReadableStream({
         start(controller) {
-            // Send current status
-            controller.enqueue(
-                encoder.encode(
-                    `data: ${JSON.stringify({ type: 'status', status: job.status, domain: job.domain })}\n\n`,
-                ),
-            );
+            const send = (payload: Record<string, unknown>) =>
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
 
-            // Replay all past log lines
-            for (const entry of job.logLines) {
-                controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify({ type: 'log', ...entry })}\n\n`),
-                );
+            send({ type: 'status', status, domain: backup.site.domain });
+
+            // Replay the lines buffered so far, then follow the run live.
+            for (const entry of getLogLines(backupId) ?? []) {
+                send({ type: 'log', ...entry });
             }
 
-            // If already done, close
-            if (job.status === 'complete' || job.status === 'error' || job.status === 'cancelled') {
-                controller.enqueue(
-                    encoder.encode(
-                        `data: ${JSON.stringify({ type: 'done', status: job.status })}\n\n`,
-                    ),
-                );
+            if (!ACTIVE_STATUSES.includes(status)) {
+                send({ type: 'done', status });
                 controller.close();
                 return;
             }
 
-            // Listen for new log events
-            function onLog(event: any) {
-                if (event.jobId !== id) return;
-                controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify({ type: 'log', ...event })}\n\n`),
-                );
+            function onLog(event: LogEvent) {
+                if (event.backupId !== backupId) return;
+                send({ type: 'log', ...event.entry });
             }
 
-            function onDone(event: any) {
-                if (event.jobId !== id) return;
-                controller.enqueue(
-                    encoder.encode(
-                        `data: ${JSON.stringify({ type: 'done', status: event.status })}\n\n`,
-                    ),
-                );
+            function onDone(event: DoneEvent) {
+                if (event.backupId !== backupId) return;
+                send({ type: 'done', status: event.status });
                 cleanup();
                 controller.close();
             }
@@ -63,12 +49,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
             function cleanup() {
                 if (cleaned) return;
                 cleaned = true;
-                backupQueue.removeListener('log', onLog);
-                backupQueue.removeListener('done', onDone);
+                events.removeListener('log', onLog);
+                events.removeListener('done', onDone);
             }
 
-            backupQueue.on('log', onLog);
-            backupQueue.on('done', onDone);
+            events.on('log', onLog);
+            events.on('done', onDone);
 
             request.signal.addEventListener('abort', () => {
                 cleanup();

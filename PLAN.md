@@ -342,6 +342,15 @@ Verified on dewwwe.com (FTP): skip-git run, full run with commit, tag, push and 
 - Starts the scheduler and a daily retention task (`deleteMany` older than
   `Settings.retentionDays`, always keeping the last 5 per site).
 
+### Done (2026-09-04) and deviations from the plan
+
+- `enqueue` serializes the conflict check and the insert with an in-process lock instead of a database transaction: the app is a single process, and it keeps the queue off Prisma interactive transactions on the single-connection better-sqlite3 adapter.
+- The worker loop is `dispatch()`, re-entered after every enqueue and every completion. The running job leaves memory before `done` is emitted, so an SSE client never sees a stale buffer.
+- `jobId` is gone. The routes keep their Phase 2 URLs (`/api/backups/run/[id]`, `cancel/[jobId]`, `logs/[jobId]`, `status`) but the parameter is the Backup id; Phase 4 renames them.
+- `scheduler.reload()` is called by the site routes. The settings route does not exist yet, it comes with Phase 4 and must call it too. `stop()` and `scheduledSiteIds()` exist for tests and the boot log.
+- Boot logic lives in `lib/jobs/boot.ts` so it can be tested; `instrumentation.ts` only guards `NEXT_RUNTIME` and imports it dynamically. Retention runs once at boot, then daily at 04:00 `TZ`; it keeps the last 5 per site and never deletes an active row. Missing secrets throw in production and only warn elsewhere.
+- Tests that need a real SQLite database go through `lib/testing/db.ts` (temp `DATA_DIR`, migrations replayed).
+
 ## Phase 4 — API and UI
 
 ### Auth

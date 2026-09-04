@@ -1,22 +1,17 @@
 import { NextResponse } from 'next/server';
-import { backupQueue } from '@/lib/jobs/queue';
+import { jsonError } from '@/lib/api';
+import { getBackup } from '@/lib/db';
+import { cancel } from '@/lib/jobs/queue';
+import { parseId } from '@/lib/validation';
 
 export async function POST(request: Request, { params }: { params: Promise<{ jobId: string }> }) {
-    const { jobId } = await params;
-    const id = parseInt(jobId);
+    const id = parseId((await params).jobId);
+    const backup = id ? await getBackup(id) : null;
+    if (!backup) return jsonError(404, 'Backup not found');
 
-    const job = backupQueue.getJob(id);
-    if (!job) {
-        return NextResponse.json({ error: 'Job not found' }, { status: 404 });
+    if (!(await cancel(backup.id))) {
+        return jsonError(400, 'Backup cannot be cancelled (already finished)');
     }
 
-    const cancelled = backupQueue.cancelJob(id);
-    if (!cancelled) {
-        return NextResponse.json(
-            { error: 'Job cannot be cancelled (already finished)' },
-            { status: 400 },
-        );
-    }
-
-    return NextResponse.json({ success: true, domain: job.domain, jobId: id });
+    return NextResponse.json({ success: true, domain: backup.site.domain, backupId: backup.id });
 }

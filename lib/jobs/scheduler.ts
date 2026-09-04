@@ -1,0 +1,81 @@
+import { schedule, type ScheduledTask } from 'node-cron';
+import { getSettings, listSites } from '../db';
+import { errorMessage } from '../engine/cancel';
+import { BackupConflictError, enqueue } from './queue';
+
+/**
+ * One node-cron task per enabled site, firing `enqueue(siteId, { triggerType: 'scheduled' })`.
+ * The schedule is `site.cronSchedule`, or `Settings.defaultCron` when the site has none, in
+ * the `TZ` timezone. `reload()` rebuilds everything from the database and must be called after
+ * every site or settings mutation; the boot hook calls it once at startup.
+ */
+
+interface SchedulerState {
+    tasks: Map<number, ScheduledTask>;
+    /** Reloads run one at a time so two mutations in a row cannot double-schedule a site. */
+    reloading: Promise<void>;
+}
+
+// Cached on globalThis so `next dev` hot reloads do not leave orphan cron tasks running.
+const globalForScheduler = globalThis as unknown as { backupScheduler?: SchedulerState };
+
+const state: SchedulerState = globalForScheduler.backupScheduler ?? {
+    tasks: new Map(),
+    reloading: Promise.resolve(),
+};
+
+if (process.env.NODE_ENV !== 'production') {
+    globalForScheduler.backupScheduler = state;
+}
+
+/** Drops every task and schedules the enabled sites again from the database. */
+export function reload(): Promise<void> {
+    const run = state.reloading.then(rebuild, rebuild);
+    state.reloading = run;
+    return run;
+}
+
+/** Drops every task. Nothing runs until the next `reload()`. */
+export async function stop(): Promise<void> {
+    for (const task of state.tasks.values()) {
+        await task.destroy();
+    }
+    state.tasks.clear();
+}
+
+/** Site ids with an active cron task, for status pages and tests. */
+export function scheduledSiteIds(): number[] {
+    return [...state.tasks.keys()];
+}
+
+async function rebuild(): Promise<void> {
+    await stop();
+    const [settings, sites] = await Promise.all([getSettings(), listSites()]);
+    const timezone = process.env.TZ || undefined;
+
+    for (const site of sites) {
+        if (!site.enabled) continue;
+        const expression = site.cronSchedule ?? settings.defaultCron;
+        try {
+            const task = schedule(expression, () => trigger(site.id, site.domain), { timezone });
+            state.tasks.set(site.id, task);
+        } catch (error) {
+            // Expressions are validated on input; a bad one must not take the other sites down.
+            console.error(
+                `[scheduler] ${site.domain}: cannot schedule "${expression}": ${errorMessage(error)}`,
+            );
+        }
+    }
+}
+
+async function trigger(siteId: number, domain: string): Promise<void> {
+    try {
+        await enqueue(siteId, { triggerType: 'scheduled' });
+    } catch (error) {
+        if (error instanceof BackupConflictError) {
+            console.warn(`[scheduler] ${domain}: skipped, a backup is already active`);
+            return;
+        }
+        console.error(`[scheduler] ${domain}: ${errorMessage(error)}`);
+    }
+}
