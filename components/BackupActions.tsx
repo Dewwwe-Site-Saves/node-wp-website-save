@@ -1,9 +1,9 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
+import { useState } from 'react';
+import { useJobStatus } from '@/components/JobStatusProvider';
 import { LogModal } from '@/components/LogModal';
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
 
 export function RunBackupButton({
     siteId,
@@ -11,11 +11,10 @@ export function RunBackupButton({
     size = 'sm',
 }: {
     siteId: number;
-    domain?: string;
+    domain: string;
     size?: 'sm' | 'default';
 }) {
     const [showModal, setShowModal] = useState(false);
-    const router = useRouter();
 
     return (
         <>
@@ -26,53 +25,48 @@ export function RunBackupButton({
                 <LogModal
                     mode="run"
                     siteId={siteId}
-                    domain={domain || `Site #${siteId}`}
-                    onClose={() => {
-                        setShowModal(false);
-                        router.refresh();
-                    }}
+                    domain={domain}
+                    onClose={() => setShowModal(false)}
                 />
             )}
         </>
     );
 }
 
+/** Queues every enabled site. Disabled while anything is active: the queue refuses a second backup per site anyway. */
 export function RunAllButton() {
-    const [loading, setLoading] = useState(false);
-    const [isRunning, setIsRunning] = useState(false);
-    const router = useRouter();
-
-    useEffect(() => {
-        if (!isRunning) return;
-        const interval = setInterval(async () => {
-            try {
-                const res = await fetch('/api/backups/status');
-                const data = await res.json();
-                if (data.running.length === 0 && data.pending.length === 0) {
-                    setIsRunning(false);
-                    setLoading(false);
-                    router.refresh();
-                }
-            } catch {
-                /* ignore */
-            }
-        }, 3000);
-        return () => clearInterval(interval);
-    }, [isRunning]);
+    const { active, refresh } = useJobStatus();
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     async function handleRunAll() {
-        setLoading(true);
+        setSubmitting(true);
+        setError(null);
         try {
-            await fetch('/api/backups/run', { method: 'POST' });
-            setIsRunning(true);
+            const res = await fetch('/api/backups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                setError(data.error || 'Could not queue the backups');
+            }
+            await refresh();
         } catch {
-            setLoading(false);
+            setError('Could not queue the backups');
+        } finally {
+            setSubmitting(false);
         }
     }
 
+    const busy = submitting || active.length > 0;
     return (
-        <Button onClick={handleRunAll} disabled={loading}>
-            {loading ? 'Running...' : 'Backup All'}
-        </Button>
+        <div className="flex items-center gap-3">
+            {error && <span className="text-sm text-destructive">{error}</span>}
+            <Button onClick={handleRunAll} disabled={busy}>
+                {active.length > 0 ? 'Running...' : submitting ? 'Queuing...' : 'Backup All'}
+            </Button>
+        </div>
     );
 }

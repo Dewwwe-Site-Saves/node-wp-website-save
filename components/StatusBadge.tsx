@@ -1,22 +1,18 @@
 import { Badge } from '@/components/ui/badge';
 
-interface StatusBadgeProps {
-    status: string | null;
-}
-
-export function StatusBadge({ status }: StatusBadgeProps) {
+/** One badge per server status (`pending`, `running`, `success`, `error`, `cancelled`); null means "no backup yet". */
+export function StatusBadge({ status }: { status: string | null }) {
     if (!status) {
-        return <Badge variant="outline">PENDING</Badge>;
+        return <Badge variant="outline">NEVER</Badge>;
     }
-
+    if (status === 'pending' || status === 'running') {
+        return (
+            <Badge variant="outline" className="animate-pulse border-primary text-primary">
+                {status.toUpperCase()}
+            </Badge>
+        );
+    }
     const variant =
-        status === 'success'
-            ? 'default'
-            : status === 'error'
-              ? 'destructive'
-              : status === 'cancelled'
-                ? 'outline'
-                : 'secondary';
-
+        status === 'success' ? 'default' : status === 'error' ? 'destructive' : 'secondary';
     return <Badge variant={variant}>{status.toUpperCase()}</Badge>;
 }

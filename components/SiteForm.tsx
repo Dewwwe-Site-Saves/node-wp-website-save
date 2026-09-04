@@ -2,14 +2,15 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { SiteSummary } from '@/lib/db';
+import { SecretInput } from '@/components/SecretInput';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-const DEFAULT_CRON = '0 3 * * *';
+import type { ConnectionTestResult } from '@/lib/connection-test';
+import type { SiteSummary } from '@/lib/db';
+import { formatSize } from '@/lib/format';
 
 interface SiteFormValues {
     domain: string;
@@ -26,22 +27,27 @@ interface SiteFormValues {
     enabled: boolean;
 }
 
-const defaults: SiteFormValues = {
-    domain: '',
-    repo: '',
-    repoUrl: '',
-    protocol: 'ftp',
-    host: '',
-    port: 21,
-    username: '',
-    password: '',
-    webRootPath: 'www',
-    spListItemId: '',
-    cronSchedule: DEFAULT_CRON,
-    enabled: true,
-};
+const SELECT_CLASS =
+    'flex h-7 w-full rounded-md border border-input bg-input/20 px-2 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/30 md:text-xs/relaxed';
 
-function toFormValues(site: SiteSummary): SiteFormValues {
+function defaults(defaultCron: string): SiteFormValues {
+    return {
+        domain: '',
+        repo: '',
+        repoUrl: '',
+        protocol: 'ftp',
+        host: '',
+        port: 21,
+        username: '',
+        password: '',
+        webRootPath: 'www',
+        spListItemId: '',
+        cronSchedule: defaultCron,
+        enabled: true,
+    };
+}
+
+function toFormValues(site: SiteSummary, defaultCron: string): SiteFormValues {
     return {
         domain: site.domain,
         repo: site.repo,
@@ -53,7 +59,7 @@ function toFormValues(site: SiteSummary): SiteFormValues {
         password: '',
         webRootPath: site.webRootPath,
         spListItemId: site.spListItemId ?? '',
-        cronSchedule: site.cronSchedule ?? DEFAULT_CRON,
+        cronSchedule: site.cronSchedule ?? defaultCron,
         enabled: site.enabled,
     };
 }
@@ -61,15 +67,22 @@ function toFormValues(site: SiteSummary): SiteFormValues {
 export function SiteForm({
     site,
     mode = 'create',
+    defaultCron,
 }: {
     site?: SiteSummary;
     mode?: 'create' | 'edit';
+    /** `Settings.defaultCron`, what "Use global schedule" means today. */
+    defaultCron: string;
 }) {
     const router = useRouter();
-    const [form, setForm] = useState<SiteFormValues>(site ? toFormValues(site) : defaults);
+    const [form, setForm] = useState<SiteFormValues>(
+        site ? toFormValues(site, defaultCron) : defaults(defaultCron),
+    );
     const [useGlobalSchedule, setUseGlobalSchedule] = useState(!site?.cronSchedule);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [testing, setTesting] = useState(false);
+    const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 
     function update<K extends keyof SiteFormValues>(field: K, value: SiteFormValues[K]) {
         setForm((prev) => {
@@ -80,6 +93,7 @@ export function SiteForm({
             }
             return updated;
         });
+        setTestResult(null);
     }
 
     async function handleSubmit(e: React.FormEvent) {
@@ -119,6 +133,40 @@ export function SiteForm({
         }
     }
 
+    async function handleTestConnection() {
+        if (mode === 'create' && !form.password) {
+            setTestResult({ ok: false, entries: [], error: 'Enter the password to test' });
+            return;
+        }
+        setTesting(true);
+        setTestResult(null);
+        try {
+            const url = mode === 'create' ? '/api/sites/test' : `/api/sites/${site?.id}/test`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    protocol: form.protocol,
+                    host: form.host,
+                    port: form.port,
+                    username: form.username,
+                    password: form.password,
+                    webRootPath: form.webRootPath,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setTestResult({ ok: false, entries: [], error: data.error || 'Test failed' });
+                return;
+            }
+            setTestResult(data);
+        } catch {
+            setTestResult({ ok: false, entries: [], error: 'Test failed' });
+        } finally {
+            setTesting(false);
+        }
+    }
+
     return (
         <form onSubmit={handleSubmit}>
             <div className="space-y-6">
@@ -152,8 +200,11 @@ export function SiteForm({
                                 placeholder="mysite"
                                 required
                             />
+                            <p className="text-xs text-muted-foreground">
+                                Local folder of the clone under the data directory.
+                            </p>
                         </div>
-                        <div className="col-span-2 space-y-2">
+                        <div className="sm:col-span-2 space-y-2">
                             <Label htmlFor="repoUrl">Repository URL</Label>
                             <Input
                                 id="repoUrl"
@@ -162,6 +213,9 @@ export function SiteForm({
                                 placeholder="https://github.com/org/repo.git"
                                 required
                             />
+                            <p className="text-xs text-muted-foreground">
+                                GitHub over HTTPS. The repository must exist and be private.
+                            </p>
                         </div>
                     </CardContent>
                 </Card>
@@ -170,72 +224,94 @@ export function SiteForm({
                     <CardHeader>
                         <CardTitle className="text-base">Connection</CardTitle>
                     </CardHeader>
-                    <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="protocol">Protocol</Label>
-                            <select
-                                id="protocol"
-                                value={form.protocol}
-                                onChange={(e) =>
-                                    update('protocol', e.target.value === 'sftp' ? 'sftp' : 'ftp')
-                                }
-                                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="protocol">Protocol</Label>
+                                <select
+                                    id="protocol"
+                                    value={form.protocol}
+                                    onChange={(e) =>
+                                        update(
+                                            'protocol',
+                                            e.target.value === 'sftp' ? 'sftp' : 'ftp',
+                                        )
+                                    }
+                                    className={SELECT_CLASS}
+                                >
+                                    <option value="ftp">FTP</option>
+                                    <option value="sftp">SFTP</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="host">Host</Label>
+                                <Input
+                                    id="host"
+                                    value={form.host}
+                                    onChange={(e) => update('host', e.target.value)}
+                                    placeholder="ftp.mysite.com"
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="port">Port</Label>
+                                <Input
+                                    id="port"
+                                    type="number"
+                                    min={1}
+                                    max={65535}
+                                    value={form.port}
+                                    onChange={(e) => update('port', parseInt(e.target.value) || 0)}
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="webRootPath">Web root path</Label>
+                                <Input
+                                    id="webRootPath"
+                                    value={form.webRootPath}
+                                    onChange={(e) => update('webRootPath', e.target.value)}
+                                    placeholder="www"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Folder holding wp-config.php, relative to the login directory.
+                                    Empty for the login directory itself.
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="username">Username</Label>
+                                <Input
+                                    id="username"
+                                    value={form.username}
+                                    onChange={(e) => update('username', e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="password">Password</Label>
+                                <SecretInput
+                                    id="password"
+                                    value={form.password}
+                                    onChange={(value) => update('password', value)}
+                                    placeholder={mode === 'edit' ? '(unchanged)' : ''}
+                                    required={mode === 'create'}
+                                />
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleTestConnection}
+                                disabled={testing || !form.host || !form.username}
                             >
-                                <option value="ftp">FTP</option>
-                                <option value="sftp">SFTP</option>
-                            </select>
+                                {testing ? 'Connecting...' : 'Test connection'}
+                            </Button>
+                            <span className="text-xs text-muted-foreground">
+                                Connects and lists the web root. Up to 15 seconds.
+                            </span>
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="host">Host</Label>
-                            <Input
-                                id="host"
-                                value={form.host}
-                                onChange={(e) => update('host', e.target.value)}
-                                placeholder="ftp.mysite.com"
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="port">Port</Label>
-                            <Input
-                                id="port"
-                                type="number"
-                                min={1}
-                                max={65535}
-                                value={form.port}
-                                onChange={(e) => update('port', parseInt(e.target.value) || 0)}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="webRootPath">Web root path</Label>
-                            <Input
-                                id="webRootPath"
-                                value={form.webRootPath}
-                                onChange={(e) => update('webRootPath', e.target.value)}
-                                placeholder="www"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="username">Username</Label>
-                            <Input
-                                id="username"
-                                value={form.username}
-                                onChange={(e) => update('username', e.target.value)}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="password">Password</Label>
-                            <Input
-                                id="password"
-                                type="password"
-                                value={form.password}
-                                onChange={(e) => update('password', e.target.value)}
-                                placeholder={mode === 'edit' ? '(unchanged)' : ''}
-                                required={mode === 'create'}
-                            />
-                        </div>
+                        {testResult && <ConnectionTestReport result={testResult} />}
                     </CardContent>
                 </Card>
 
@@ -248,21 +324,19 @@ export function SiteForm({
                             <div>
                                 <Label>Backup schedule</Label>
                                 <p className="text-sm text-muted-foreground">
-                                    Use the global schedule or set a custom one
+                                    Use the global schedule (
+                                    <span className="font-mono text-xs">{defaultCron}</span>) or set
+                                    a custom one
                                 </p>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Label htmlFor="global-schedule" className="text-sm">
-                                    Global
-                                </Label>
+                            <div className="flex items-center gap-2 text-sm">
+                                <span>Global</span>
                                 <Switch
-                                    id="global-schedule"
+                                    aria-label="Custom schedule"
                                     checked={!useGlobalSchedule}
                                     onCheckedChange={(checked) => setUseGlobalSchedule(!checked)}
                                 />
-                                <Label htmlFor="global-schedule" className="text-sm">
-                                    Custom
-                                </Label>
+                                <span>Custom</span>
                             </div>
                         </div>
                         {!useGlobalSchedule && (
@@ -272,7 +346,7 @@ export function SiteForm({
                                     id="cronSchedule"
                                     value={form.cronSchedule}
                                     onChange={(e) => update('cronSchedule', e.target.value)}
-                                    placeholder={DEFAULT_CRON}
+                                    placeholder={defaultCron}
                                     className="font-mono"
                                 />
                                 <p className="text-xs text-muted-foreground">
@@ -321,5 +395,42 @@ export function SiteForm({
                 </div>
             </div>
         </form>
+    );
+}
+
+const PREVIEW_ENTRIES = 12;
+
+function ConnectionTestReport({ result }: { result: ConnectionTestResult }) {
+    if (!result.ok) {
+        return (
+            <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                {result.error ?? 'Connection failed'}
+            </div>
+        );
+    }
+    const hasWpConfig = result.entries.some((entry) => entry.name === 'wp-config.php');
+    return (
+        <div className="p-3 rounded-md bg-primary/10 border border-primary/20 text-sm space-y-2">
+            <p>
+                Connected. {result.entries.length} entr{result.entries.length === 1 ? 'y' : 'ies'}{' '}
+                in the web root
+                {hasWpConfig ? ', wp-config.php found.' : ', no wp-config.php: check the path.'}
+            </p>
+            {result.entries.length > 0 && (
+                <ul className="font-mono text-xs text-muted-foreground columns-2 sm:columns-3">
+                    {result.entries.slice(0, PREVIEW_ENTRIES).map((entry) => (
+                        <li key={entry.name} className="truncate">
+                            {entry.type === 'dir' ? `${entry.name}/` : entry.name}
+                            {entry.type === 'file' && (
+                                <span className="opacity-60"> {formatSize(entry.size)}</span>
+                            )}
+                        </li>
+                    ))}
+                    {result.entries.length > PREVIEW_ENTRIES && (
+                        <li>… {result.entries.length - PREVIEW_ENTRIES} more</li>
+                    )}
+                </ul>
+            )}
+        </div>
     );
 }

@@ -131,3 +131,8 @@
         cursor: pointer;
     }
 }
+
+/* Masks a text input like a password field without being one: password managers leave it alone. */
+.secret-text {
+    -webkit-text-security: disc;
+}

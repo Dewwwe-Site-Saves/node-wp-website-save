@@ -1,12 +1,12 @@
 import { Readable } from 'node:stream';
 import { Client, enterPassiveModeIPv4 } from 'basic-ftp';
-import type { SiteConfig } from '../types';
+import type { ConnectionConfig } from '../types';
 import type { RemoteClient, RemoteClientFactory, RemoteEntry } from './client';
 
 const TIMEOUT_MS = 30_000;
 const POOL_SIZE = 5;
 
-export function createFtpFactory(site: SiteConfig): RemoteClientFactory {
+export function createFtpFactory(site: ConnectionConfig): RemoteClientFactory {
     return {
         poolSize: POOL_SIZE,
         async create() {

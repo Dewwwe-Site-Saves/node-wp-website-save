@@ -1,12 +1,68 @@
 import path from 'node:path';
 import { Prisma } from './generated/prisma/client';
-import type { Backup, Settings, Site } from './generated/prisma/client';
+import type { Backup, Settings, Site, User } from './generated/prisma/client';
+import type { Role } from './auth';
 import { decrypt, encrypt } from './crypto';
+import { DEFAULT_AUTHOR_NAME } from './engine/git';
 import type { GithubConfig, Protocol, SharePointConfig, SiteConfig } from './engine/types';
 import { spCertDir } from './paths';
 import { prisma } from './prisma';
-import { ACTIVE_STATUSES } from './validation';
-import type { ActiveStatus, BackupsQuery, SiteCreateInput, SiteUpdateInput } from './validation';
+import { ACTIVE_STATUSES, SECRET_MASK } from './validation';
+import type {
+    ActiveStatus,
+    BackupsQuery,
+    SettingsInput,
+    SiteCreateInput,
+    SiteUpdateInput,
+} from './validation';
+
+// ============ Users ============
+
+/** Every User column except the password hash: the shape exposed to pages and the API. */
+export const userSelect = {
+    id: true,
+    email: true,
+    role: true,
+    createdAt: true,
+    lastLoginAt: true,
+} satisfies Prisma.UserSelect;
+
+export type UserSummary = Omit<User, 'passwordHash'>;
+
+export function countUsers(): Promise<number> {
+    return prisma.user.count();
+}
+
+export function getUser(id: number): Promise<UserSummary | null> {
+    return prisma.user.findUnique({ where: { id }, select: userSelect });
+}
+
+/** Full row including the hash: login and password change only. */
+export function findUserByEmail(email: string): Promise<User | null> {
+    return prisma.user.findUnique({ where: { email } });
+}
+
+export function getPasswordHash(id: number): Promise<string | null> {
+    return prisma.user
+        .findUnique({ where: { id }, select: { passwordHash: true } })
+        .then((user) => user?.passwordHash ?? null);
+}
+
+export function createUser(
+    email: string,
+    passwordHash: string,
+    role: Role = 'admin',
+): Promise<UserSummary> {
+    return prisma.user.create({ data: { email, passwordHash, role }, select: userSelect });
+}
+
+export async function touchLastLogin(id: number): Promise<void> {
+    await prisma.user.update({ where: { id }, data: { lastLoginAt: new Date() } });
+}
+
+export async function setPasswordHash(id: number, passwordHash: string): Promise<void> {
+    await prisma.user.update({ where: { id }, data: { passwordHash } });
+}
 
 // ============ Sites ============
 
@@ -60,11 +116,14 @@ export async function deleteSite(id: number): Promise<void> {
     await prisma.site.delete({ where: { id } });
 }
 
-export type SiteWithLastBackup = SiteSummary & { lastBackup: Backup | null };
+export type SiteWithLastBackup = SiteSummary & { lastBackup: BackupRow | null };
 
 export async function listSitesWithLastBackup(): Promise<SiteWithLastBackup[]> {
     const sites = await prisma.site.findMany({
-        select: { ...siteSelect, backups: { orderBy: { queuedAt: 'desc' }, take: 1 } },
+        select: {
+            ...siteSelect,
+            backups: { orderBy: { queuedAt: 'desc' }, take: 1, omit: { log: true } },
+        },
         orderBy: { domain: 'asc' },
     });
     return sites.map(({ backups, ...site }) => ({ ...site, lastBackup: backups[0] ?? null }));
@@ -77,7 +136,12 @@ export function isUniqueViolation(error: unknown): boolean {
 
 // ============ Backups ============
 
-export type BackupWithDomain = Backup & { site: { domain: string } };
+/** A Backup without its log: lists never carry the log text, only the detail does. */
+export type BackupRow = Omit<Backup, 'log'>;
+
+export type BackupWithDomain = BackupRow & { site: { domain: string } };
+
+export type BackupDetail = Backup & { site: { domain: string } };
 
 export interface BackupPage {
     items: BackupWithDomain[];
@@ -94,6 +158,7 @@ export async function listBackups(query: BackupsQuery): Promise<BackupPage> {
     const [items, total] = await prisma.$transaction([
         prisma.backup.findMany({
             where,
+            omit: { log: true },
             include: { site: { select: { domain: true } } },
             orderBy: { queuedAt: 'desc' },
             skip: (query.page - 1) * query.pageSize,
@@ -104,7 +169,7 @@ export async function listBackups(query: BackupsQuery): Promise<BackupPage> {
     return { items, total, page: query.page, pageSize: query.pageSize };
 }
 
-export function getBackup(id: number): Promise<BackupWithDomain | null> {
+export function getBackup(id: number): Promise<BackupDetail | null> {
     return prisma.backup.findUnique({
         where: { id },
         include: { site: { select: { domain: true } } },
@@ -148,6 +213,24 @@ export async function getSettings(): Promise<Settings> {
     }
 }
 
+/** Settings as the page and the API expose them: the token never leaves the server, only whether one is stored (`SECRET_MASK`). Sending the mask back keeps it. */
+export type SettingsView = Omit<Settings, 'githubTokenEnc'> & { githubToken: string };
+
+export function toSettingsView(settings: Settings): SettingsView {
+    const { githubTokenEnc, ...rest } = settings;
+    return { ...rest, githubToken: githubTokenEnc ? SECRET_MASK : '' };
+}
+
+/** An undefined token keeps the stored one. The caller reloads the scheduler: `defaultCron` may have changed. */
+export async function updateSettings(input: SettingsInput): Promise<Settings> {
+    await getSettings();
+    const { githubToken, ...data } = input;
+    return prisma.settings.update({
+        where: { id: 1 },
+        data: { ...data, ...(githubToken ? { githubTokenEnc: encrypt(githubToken) } : {}) },
+    });
+}
+
 // ============ Engine configs (decrypted) ============
 
 export async function getSiteConfig(id: number): Promise<SiteConfig | null> {
@@ -167,11 +250,21 @@ export async function getSiteConfig(id: number): Promise<SiteConfig | null> {
     };
 }
 
-/** Null until both the token and the commit email are configured. */
+/** The decrypted GitHub token alone, for the token check in Settings. */
+export async function getGithubToken(): Promise<string | null> {
+    const settings = await getSettings();
+    return settings.githubTokenEnc ? decrypt(settings.githubTokenEnc) : null;
+}
+
+/** Null until both the token and the commit email are configured. The author name falls back to the engine default. */
 export async function getGithubConfig(): Promise<GithubConfig | null> {
     const settings = await getSettings();
     if (!settings.githubTokenEnc || !settings.githubEmail) return null;
-    return { email: settings.githubEmail, token: decrypt(settings.githubTokenEnc) };
+    return {
+        name: settings.githubName || DEFAULT_AUTHOR_NAME,
+        email: settings.githubEmail,
+        token: decrypt(settings.githubTokenEnc),
+    };
 }
 
 /** Null unless every SharePoint field is filled in. */

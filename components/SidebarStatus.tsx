@@ -1,38 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useJobStatus } from '@/components/JobStatusProvider';
 
 export function SidebarStatus() {
-    const [count, setCount] = useState(0);
-    const [prevCount, setPrevCount] = useState(0);
-    const router = useRouter();
-
-    useEffect(() => {
-        const fetchStatus = async () => {
-            try {
-                const res = await fetch('/api/backups/status');
-                const data = await res.json();
-                const total = data.running.length + data.pending.length;
-                setPrevCount(count);
-                setCount(total);
-            } catch {
-                /* ignore */
-            }
-        };
-        fetchStatus();
-        const interval = setInterval(fetchStatus, 3000);
-        return () => clearInterval(interval);
-    }, []);
-
-    useEffect(() => {
-        if (prevCount > 0 && count === 0) {
-            router.refresh();
-        }
-    }, [count, prevCount]);
-
+    const { running, pending } = useJobStatus();
+    const count = running.length + pending.length;
     if (count === 0) return null;
+
+    const label =
+        running.length > 0
+            ? `${running.length} backup${running.length > 1 ? 's' : ''} running`
+            : `${pending.length} backup${pending.length > 1 ? 's' : ''} queued`;
 
     return (
         <Link href="/history" className="no-underline block mb-4">
@@ -57,9 +36,14 @@ export function SidebarStatus() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                 </svg>
-                <span className="text-sm font-medium text-primary">
-                    {count} backup{count > 1 ? 's' : ''} running
-                </span>
+                <div className="text-sm font-medium text-primary">
+                    {label}
+                    {running.length > 0 && pending.length > 0 && (
+                        <span className="block text-xs font-normal opacity-80">
+                            {pending.length} queued
+                        </span>
+                    )}
+                </div>
             </div>
         </Link>
     );

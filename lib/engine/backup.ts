@@ -42,7 +42,13 @@ export async function runBackup(
     let status: BackupOutcome = 'success';
     let errorText: string | null = null;
 
-    const gitCtx: GitContext = { cwd: localRoot, email: github.email, token: github.token, signal };
+    const gitCtx: GitContext = {
+        cwd: localRoot,
+        name: github.name,
+        email: github.email,
+        token: github.token,
+        signal,
+    };
     const factory = createRemoteFactory(site);
     const rootDir = remoteRootDir(site);
 

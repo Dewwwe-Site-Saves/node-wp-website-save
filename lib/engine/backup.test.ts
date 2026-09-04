@@ -19,7 +19,11 @@ vi.mock('./remote', async (importOriginal) => {
 const { FakeRemote } = await import('./testing/fake-remote');
 
 const SQL = `-- MySQL dump 10.13\nCREATE TABLE wp_options (id int);\n${'INSERT INTO wp_options VALUES (1);\n'.repeat(50)}`;
-const github = { email: 'backup@example.com', token: 'not-used-for-file-remotes' };
+const github = {
+    name: 'WP Backup Manager',
+    email: 'backup@example.com',
+    token: 'not-used-for-file-remotes',
+};
 const savedEnv: Record<string, string | undefined> = {};
 
 let workDir: string;

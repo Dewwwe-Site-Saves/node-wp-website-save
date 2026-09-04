@@ -1,16 +1,18 @@
 import { NextResponse } from 'next/server';
-import { jsonError, parseBody } from '@/lib/api';
+import { apiHandler, jsonError, parseBody } from '@/lib/api';
 import { createSite, isUniqueViolation, listSites } from '@/lib/db';
 import * as scheduler from '@/lib/jobs/scheduler';
+import { requireRole } from '@/lib/session';
 import { siteCreateSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export const GET = apiHandler(async () => {
     return NextResponse.json(await listSites());
-}
+});
 
-export async function POST(request: Request) {
+export const POST = apiHandler(async (request: Request) => {
+    await requireRole('admin');
     const { data, response } = await parseBody(request, siteCreateSchema);
     if (response) return response;
 
@@ -24,4 +26,4 @@ export async function POST(request: Request) {
         }
         throw error;
     }
-}
+});

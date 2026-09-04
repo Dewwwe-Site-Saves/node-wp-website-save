@@ -6,9 +6,8 @@ Self-hosted backup manager for WordPress sites: pulls files over FTP/SFTP, dumps
 
 Working branch is `v2`. [PLAN.md](./PLAN.md) is the source of truth for scope and ordering — check which phase covers a feature before proposing it.
 
-- Phases 0 to 3 are committed. The v1 engine is gone; the app runs on `lib/engine` through `lib/jobs/queue.ts`, scheduled by `lib/jobs/scheduler.ts`, booted by `instrumentation.ts`.
-- Phase 4 is next: auth and first-run setup, the API routes renamed around the Backup id, settings page, UI hooks. The Phase 3 section of PLAN.md lists what deviates from the plan (in-process enqueue lock, boot logic in `lib/jobs/boot.ts`, routes still on their Phase 2 URLs).
-- Real-site checks still pending before the Docker rollout are listed at the end of Phase 2 in PLAN.md (full download, SFTP, SharePoint with PnP v4, the other sites).
+- Phases 0 to 4 are done. The v1 engine is gone; the app runs on `lib/engine` through `lib/jobs/queue.ts`, scheduled by `lib/jobs/scheduler.ts`, booted by `instrumentation.ts`, behind a session cookie checked by `proxy.ts`. The Phase 4 section of PLAN.md lists what deviates from the plan (no database access in the proxy, `lib/session.ts` next to `lib/auth.ts`, `SESSION_COOKIE_SECURE`).
+- Phase 5 is next: Dockerfile, entrypoint, compose stack, NAS rollout. Before it, the browser checks of Phase 4 (setup, login, settings, token and connection tests) and the real-site checks listed at the end of Phase 2 in PLAN.md.
 
 ## Engine
 
@@ -25,15 +24,16 @@ Working branch is `v2`. [PLAN.md](./PLAN.md) is the source of truth for scope an
 
 ## Layout
 
-- `app/` — Next.js 16 App Router (pages + `api/` routes)
-- `components/` — React components, `components/ui` is shadcn
-- `lib/` — `db.ts`, `prisma.ts`, `crypto.ts`, `validation.ts` (zod), `paths.ts`
+- `app/` — Next.js 16 App Router. `app/(app)/` holds the pages behind the login (its layout loads the current user and renders `AppShell`), `app/(auth)/` the login and setup pages, `app/api/` the route handlers. The API table in PLAN.md (Phase 4) is the reference for the routes.
+- `proxy.ts` — Next 16 proxy (the former middleware): verifies the session cookie on every request except `/login`, `/setup` and `/api/auth/{login,setup,logout}`; pages are redirected to `/login?next=`, `/api/*` gets a 401. No database access there: the login page redirects to `/setup` while the `User` table is empty, and `/setup` back to `/login` once a user exists.
+- `components/` — React components, `components/ui` is shadcn. `JobStatusProvider` is the single poller of `/api/status` (3 s, paused when the tab is hidden); components read it through `useJobStatus()` and it calls `router.refresh()` whenever the set of active backups changes, so server components never poll themselves.
+- `lib/` — `db.ts`, `prisma.ts`, `crypto.ts`, `validation.ts` (zod), `constants.ts` (statuses, protocols, `SECRET_MASK`: the only lib module client components may value-import, `validation.ts` pulls node-cron), `paths.ts`, `auth.ts` (bcrypt, JWT session token, cookie options; no database import so the proxy can use it), `session.ts` (`getCurrentUser`, `requireRole`, `openSession` / `closeSession` through `next/headers`), `login-throttle.ts`, `api.ts` (`jsonError`, `parseBody`, `apiHandler`), `connection-test.ts`
 - `lib/jobs/` — `queue.ts`: DB-first queue. The `Backup` row is the job; in memory only the `AbortController` and the log buffer of the runs in progress. `enqueue` throws `BackupConflictError` when the site already has an active backup, `cancel` marks a pending row or aborts a running one, `subscribe(backupId, listeners)` registers `log` / `status` / `done` listeners and returns the buffered lines in the same tick (the SSE route relies on that ordering). Queue, scheduler and boot state live on `globalThis` unconditionally: in production the boot hook and the route bundles may not share a module instance. `scheduler.ts`: one node-cron task per enabled site, `reload()` rebuilds them from the database and must be called after every site or settings mutation. `boot.ts`: called once by `instrumentation.ts` (env check, `initDatabase`, orphan job sweep, scheduler, daily retention).
 - `lib/testing/db.ts` — throwaway SQLite database for tests that run Prisma for real (temp `DATA_DIR`, migrations replayed); import it before anything that touches the database.
 - `lib/engine/` — the backup engine, see above
 - `prisma/` — schema and migrations
 - `helpers/backup-wp.php` — dropped on the remote host to dump the database, read at each run from `<cwd>/helpers`
-- `scripts/` — one-off `tsx` scripts
+- `scripts/` — one-off `tsx` scripts: `import-config.ts` (legacy config.json), `reset-password.ts <email> [password]` (the only way back in without the current password)
 
 ## Commands
 
@@ -58,7 +58,9 @@ Spell checking: Code Spell Checker reads `.vscode/cspell.json`. Add project voca
 - Code, identifiers, comments and **UI labels** in English.
 - Imports use the `@/*` alias in `app/`, `components/` and root files (`importModuleSpecifier: non-relative`). Inside `lib/` they are relative: vitest resolves no alias, and `lib` must stay runnable from the tests.
 - Dates stored as ISO 8601 UTC. Git tags are `YYYYMMDD-HHmmss` in UTC.
-- Stored credentials are encrypted as `enc:v1:<iv>:<tag>:<data>` via `lib/crypto.ts` — never write a secret to the database in clear.
+- Stored credentials are encrypted as `enc:v1:<iv>:<tag>:<data>` via `lib/crypto.ts` — never write a secret to the database in clear. The API never returns a stored secret: it sends `SECRET_MASK` (`lib/validation.ts`) and treats the mask or an empty string in a PUT as "keep the stored value".
+- Route handlers are `export const GET = apiHandler(async (request, { params }) => ...)`: `AuthError` becomes its status, any other exception a 500 with a generic message. Mutating handlers start with `await requireRole('admin')`; read handlers rely on the proxy. Bodies go through `parseBody(request, schema)`, ids through `parseId`.
+- Adding a page under `app/(app)/` needs nothing for auth; a new public route must be added to `PUBLIC_PATHS` in `proxy.ts`.
 - All runtime state lives under `DATA_DIR` (env var, falls back to `cwd/data`): database, `files/<repo>` clones, `sp-certificates/`. Never build paths from `__dirname` — it breaks the Docker standalone build.
 - Tests are vitest, colocated as `*.test.ts` next to the module.
 

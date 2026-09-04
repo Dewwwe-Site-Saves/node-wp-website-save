@@ -18,7 +18,16 @@ export interface SiteConfig {
     spListItemId: string | null;
 }
 
+/** What a remote client needs: the connection test runs on these fields before a site exists. */
+export type ConnectionConfig = Pick<
+    SiteConfig,
+    'protocol' | 'host' | 'port' | 'username' | 'password' | 'webRootPath'
+>;
+
 export interface GithubConfig {
+    /** Commit author name. */
+    name: string;
+    /** Commit author email. */
     email: string;
     token: string;
 }

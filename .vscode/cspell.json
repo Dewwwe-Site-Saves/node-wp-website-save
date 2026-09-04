@@ -42,6 +42,7 @@
         "unlistable",
         "vitest",
         "webroot",
+        "wpbm",
         "zod"
     ]
 }

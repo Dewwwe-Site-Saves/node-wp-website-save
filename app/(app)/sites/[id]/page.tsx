@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getSite, listBackups } from '@/lib/db';
+import { getSettings, getSite, listBackups } from '@/lib/db';
 import { backupsQuerySchema, parseId } from '@/lib/validation';
 import { RunBackupButton } from '@/components/BackupActions';
 import { BackupHistory } from '@/components/BackupHistory';
@@ -15,7 +15,10 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     const site = id ? await getSite(id) : null;
     if (!site) notFound();
 
-    const backups = await listBackups(backupsQuerySchema.parse({ siteId: site.id, pageSize: 20 }));
+    const [backups, settings] = await Promise.all([
+        listBackups(backupsQuerySchema.parse({ siteId: site.id, pageSize: 20 })),
+        getSettings(),
+    ]);
 
     return (
         <div className="max-w-4xl">
@@ -67,12 +70,21 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                             </div>
                             <div>
                                 <span className="text-muted-foreground">Repository</span>
-                                <p className="font-medium">{site.repo}</p>
+                                <p className="font-medium">
+                                    <a
+                                        href={site.repoUrl.replace(/\.git$/, '')}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-primary hover:underline"
+                                    >
+                                        {site.repo}
+                                    </a>
+                                </p>
                             </div>
                             <div>
                                 <span className="text-muted-foreground">Schedule</span>
                                 <p className="font-medium font-mono text-xs">
-                                    {site.cronSchedule ?? 'Global'}
+                                    {site.cronSchedule ?? `Global (${settings.defaultCron})`}
                                 </p>
                             </div>
                             {site.spListItemId && (

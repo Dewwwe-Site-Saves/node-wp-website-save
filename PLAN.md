@@ -350,8 +350,8 @@ Verified on dewwwe.com (FTP): skip-git run, full run with commit, tag, push and 
 - Queue, scheduler and boot state sit on `globalThis` in every environment, not only in development: the boot hook and the route bundles of a production build may not share a module instance. A second `boot()` in the same process skips the orphan sweep.
 - `cancel` is answered by the queue before the row is looked up, so a run whose site was deleted (cascade) stays cancellable.
 - `getSettings()` is a read with a one-time `create`, not an `upsert` (which took a write transaction on every call).
-- `jobId` is gone. The routes keep their Phase 2 URLs (`/api/backups/run/[id]`, `cancel/[jobId]`, `logs/[jobId]`, `status`) but the parameter is the Backup id; Phase 4 renames them.
-- `scheduler.reload()` is called by the site routes. The settings route does not exist yet, it comes with Phase 4 and must call it too. `stop()` and `scheduledSiteIds()` exist for tests and the boot log.
+- `jobId` is gone. The routes kept their Phase 2 URLs until Phase 4 renamed them around the Backup id (see the API table below).
+- `scheduler.reload()` is called by the site routes and, since Phase 4, by `PUT /api/settings`. `stop()` and `scheduledSiteIds()` exist for tests and the boot log.
 - Boot logic lives in `lib/jobs/boot.ts` so it can be tested; `instrumentation.ts` only guards `NEXT_RUNTIME` and imports it dynamically. Retention runs once at boot, then daily at 04:00 `TZ`; it keeps the last 5 per site and never deletes an active row. Missing secrets throw in production and only warn elsewhere.
 - Tests that need a real SQLite database go through `lib/testing/db.ts` (temp `DATA_DIR`, migrations replayed).
 
@@ -390,9 +390,11 @@ Verified on dewwwe.com (FTP): skip-git run, full run with commit, tag, push and 
 | POST | `/api/auth/setup` | creates the first admin, 403 once a user exists |
 | POST | `/api/auth/login` | `{ email, password }` → session cookie |
 | POST | `/api/auth/logout` | |
+| PUT | `/api/auth/password` | `{ currentPassword, newPassword, passwordConfirmation }` for the current user |
 | GET / POST | `/api/sites` | list (no secrets) / create (zod) |
 | GET / PUT / DELETE | `/api/sites/[id]` | detail without secrets; PUT keeps the password when the field is empty |
-| POST | `/api/sites/[id]/test` | connect + list webroot, 15 s timeout, returns `{ ok, entries, error }` |
+| POST | `/api/sites/test` | connection fields of the create form (password required), 15 s timeout, returns `{ ok, entries, error }` |
+| POST | `/api/sites/[id]/test` | same body from the edit form, empty password = the stored one |
 | GET | `/api/backups` | paginated, `?siteId=&status=&page=&pageSize=` |
 | POST | `/api/backups` | `{ siteIds?: number[], fullDownload?, skipGit? }`; omitted `siteIds` = all enabled sites; returns created ids and per-site 409s |
 | GET | `/api/backups/[id]` | detail including log |
@@ -422,6 +424,25 @@ Every handler: `await params`, `parseInt` guarded, body parsed with zod, errors 
 - Site form: "Use global schedule" maps to `cronSchedule = null`; "Test connection" button.
 - Setup and login pages.
 - Props typed from Prisma types (`Site`, `Backup`); no `any`.
+
+### Done (2026-09-04) and deviations from the plan
+
+- The proxy never touches the database: it only verifies the cookie signature with `jose`, so `proxy.ts` imports `lib/auth.ts` alone (bcrypt + jose, no Prisma). The "no user yet" state is handled by the pages: `/login` redirects to `/setup` while the `User` table is empty, `/setup` redirects to `/login` once a user exists, and `POST /api/auth/setup` answers 403. An API call without a session gets 401 in every case, never the planned 503 `setup_required`. No in-memory cache to invalidate.
+- `getCurrentUser()`, `requireRole()`, `openSession()` and `closeSession()` live in `lib/session.ts` (they need `next/headers` and the database); `lib/auth.ts` keeps the pure parts (`hashPassword`, `verifyPassword`, `createSessionToken`, `verifySessionToken`, `sessionCookieOptions`, `ROLES`). A deleted user is logged out on the next request even with a valid cookie, since the session is resolved against the row.
+- `SESSION_COOKIE_SECURE=false` disables the `Secure` flag for a production instance served over plain HTTP on the LAN. Default: `Secure` in production only.
+- Route handlers are wrapped in `apiHandler` (`lib/api.ts`): `AuthError` → 401/403, anything else → 500 with a generic message and a server-side log. `parseBody` treats an empty body as `{}` so `POST /api/backups` works without a payload.
+- `POST /api/backups/run/[id]` is gone, folded into `POST /api/backups` with `siteIds`. The response is 201 with `{ queued, conflicts }`, or 409 when every requested site already had an active backup. Two connection-test routes instead of one: `/api/sites/test` for the create form and `/api/sites/[id]/test` for the edit form (empty password = stored one).
+- Backup lists (`GET /api/backups`, `listBackups`, `listSitesWithLastBackup`) omit the `log` column (`BackupRow`); only `GET /api/backups/[id]` returns it.
+- `GET /api/settings` returns `githubToken: "••••••"` when a token is stored, `""` otherwise; `PUT` treats the mask or an empty string as "keep". `POST /api/settings/test-github` checks the typed token (or the stored one) against `GET /user`, then the push access to every site's repository.
+- `useJobStatus()` refreshes the server components whenever the set of active backups (ids + statuses) changes, not only on the running → idle transition: a finished backup among several running ones updates its row right away. Polling pauses while the tab is hidden.
+- The History page keeps its filters and page in the URL and renders server-side from `listBackups`; `GET /api/backups` exposes the same query for other callers.
+- The login page passes a sanitized `next` (relative path only, no `//` or `/\` prefix) to the form; the proxy adds it when it redirects. `POST /api/auth/login` is throttled per address (`lib/login-throttle.ts`: 5 failures, 15 min lockout, 429 with `Retry-After`) since every attempt costs a bcrypt comparison.
+- `POST /api/sites/[id]/test` uses the stored password only when protocol, host, port and username match the stored row: the credential never goes to a server typed in the form.
+- Browser-safe enumerations (`BACKUP_STATUSES`, `SECRET_MASK`, ...) live in `lib/constants.ts`, re-exported by `validation.ts`. Client components import from `constants.ts`: `validation.ts` pulls node-cron, which cannot be bundled for the browser.
+- The SSE stream sends a `: ping` comment every 25 s so an idle reverse proxy keeps the connection; the browser `EventSource` is left to reconnect on its own and the log view resets on each open, since the route replays the buffer.
+- Pages live in route groups: `app/(app)/` (sidebar layout, `getCurrentUser()` once per request) and `app/(auth)/` (centered card). The `AppShell` client component owns the mobile sidebar state; `app/layout.tsx` is a server component with `metadata`.
+
+Verified in `next dev` on 2026-09-04: setup flow on an empty database, login, wrong credentials refused, `/setup` after a user exists (lands on the dashboard through `/login`), settings save with a schedule change (the scheduler now logs what it re-armed), "Test token", "Test connection" on the edit form with an empty password and on the create form (asks for the password, no stored one yet), history filters and paging, Release link in the history rows, live modal on a queued and on a running backup, cancel from the modal. Still to check before Phase 5: the 429 after five failed logins, sign out, password change, `scripts/reset-password.ts`, the layout on a phone.
 
 ## Phase 5 — Docker and NAS deployment
 

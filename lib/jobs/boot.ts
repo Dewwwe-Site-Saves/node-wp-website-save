@@ -36,7 +36,6 @@ export async function boot(): Promise<void> {
     }
 
     await scheduler.reload();
-    console.log(`[boot] scheduler armed for ${scheduler.scheduledSiteIds().length} site(s)`);
 
     await state.retention?.destroy();
     state.retention = schedule(RETENTION_CRON, runRetention, {

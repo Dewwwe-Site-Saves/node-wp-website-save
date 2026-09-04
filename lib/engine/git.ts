@@ -7,7 +7,8 @@ import type { Logger } from './types';
 
 const execFileAsync = promisify(execFile);
 
-const AUTHOR_NAME = 'WP Backup Manager';
+/** Commit author name when `Settings.githubName` is empty. */
+export const DEFAULT_AUTHOR_NAME = 'WP Backup Manager';
 /** Generous: a first push of a large site prints a lot, and stdout of fetch/push is discarded anyway. */
 const MAX_BUFFER = 64 * 1024 * 1024;
 
@@ -24,6 +25,8 @@ const CREDENTIAL_HELPER =
 export interface GitContext {
     /** Working directory of the clone. */
     cwd: string;
+    /** Commit author name. */
+    name: string;
     /** Commit author email. */
     email: string;
     /** GitHub token, or null for remotes that need no authentication (tests, local paths). */
@@ -47,7 +50,7 @@ type ExecError = Error & { code?: number | string; stderr?: string; killed?: boo
 export async function git(args: string[], ctx: GitContext, cwd = ctx.cwd): Promise<string> {
     const config = [
         '-c',
-        `user.name=${AUTHOR_NAME}`,
+        `user.name=${ctx.name}`,
         '-c',
         `user.email=${ctx.email}`,
         '-c',

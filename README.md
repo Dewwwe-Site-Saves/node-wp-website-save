@@ -23,7 +23,11 @@ npm run typecheck
 npm test
 ```
 
-First start opens a setup page to create the admin account. Sites, GitHub token, SharePoint and schedule are managed from the Settings page.
+First start opens a setup page to create the admin account (email + password, 12 characters minimum), then lands on Settings: fill in the GitHub commit author and token first, the sites come next. The password can be changed from the Account section of Settings. Lost password:
+
+```bash
+npx tsx scripts/reset-password.ts admin@example.com   # prints a generated password
+```
 
 ## Config
 
@@ -32,11 +36,12 @@ Environment variables, see [.env.example](./.env.example):
 - `DATA_DIR` — database, site clones and certificates
 - `ENCRYPTION_KEY` — encrypts stored passwords and tokens
 - `SESSION_SECRET` — signs the session cookie
+- `SESSION_COOKIE_SECURE` — `false` to allow the session cookie over plain HTTP (production marks it Secure by default)
 - `TZ` — timezone for cron schedules
 
 ### GitHub
 
-Fine-grained personal access token restricted to the backup repos, with `Contents: read/write` and `Metadata: read`. Stored encrypted, used for pushes and releases.
+Fine-grained personal access token restricted to the backup repos, with `Contents: read/write` and `Metadata: read`. Stored encrypted, used for pushes and releases. The "Test token" button in Settings checks the token against GitHub and the push access to every site's repository; the commit author name and email are configured next to it.
 
 > Backup repos must be **private**: they contain `wp-config.php` and the full database dump.
 
@@ -73,7 +78,7 @@ The app runs the following steps for each site:
 
 ## Security
 
-- The web UI and API are behind a login
+- The web UI and API are behind a login: one admin account created at first run, session in a signed `httpOnly` cookie (7 days), no default credentials
 - Passwords and tokens are encrypted at rest (AES-256-GCM)
 - The PHP script (`backup-wp.php`) is protected by a unique token generated per run, only its hash is stored on the server
 - The token is deleted from the server as soon as it's validated
@@ -95,7 +100,7 @@ The "Full download" option clears the local tree and downloads every file again.
 
 ## Multi-site support
 
-Backups run through a queue with limited concurrency (configurable in Settings). Each site has its own log, stored with the run and streamed live in the UI. A site can't have two backups running at the same time.
+Backups run through a queue with limited concurrency (configurable in Settings). Each site has its own log, stored with the run and streamed live in the UI. A site can't have two backups running at the same time. The History page filters by site and status; the site form has a "Test connection" button that lists the web root before saving.
 
 Every enabled site is scheduled with node-cron, on its own cron expression or the global default, in the `TZ` timezone. Old runs are pruned daily once past the retention period; the last 5 of each site are always kept.
 
@@ -132,9 +137,9 @@ If something goes wrong with a site, delete `$DATA_DIR/files/your-site` and re-r
 - [x] Password encryption at rest (AES-256)
 - [x] Engine rewrite (TypeScript, no shell, GitHub token through the environment)
 - [x] GitHub releases created by the app
-- [ ] Login + first-run setup
+- [x] Login + first-run setup
 - [x] Scheduled backups via node-cron (per-site cron schedule, global default in Settings)
-- [ ] Settings page + test connection
+- [x] Settings page + test connection
 - [ ] Docker deployment for Synology NAS (standalone Next.js image)
 
 ### Planned

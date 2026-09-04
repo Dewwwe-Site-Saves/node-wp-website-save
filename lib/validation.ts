@@ -1,23 +1,17 @@
 import { z } from 'zod';
 import { validate as validateCron } from 'node-cron';
+import { BACKUP_STATUSES, PROTOCOLS, SECRET_MASK } from './constants';
 
-// ============ Constants ============
-
-export const PROTOCOLS = ['ftp', 'sftp'] as const;
-export const BACKUP_STATUSES = ['pending', 'running', 'success', 'error', 'cancelled'] as const;
-export const TRIGGER_TYPES = ['manual', 'scheduled'] as const;
-
-export type BackupStatus = (typeof BACKUP_STATUSES)[number];
-export type TriggerType = (typeof TRIGGER_TYPES)[number];
-
-/** Statuses of a backup that is still in the queue or executing. */
-export const ACTIVE_STATUSES = ['pending', 'running'] as const satisfies readonly BackupStatus[];
-
-export type ActiveStatus = (typeof ACTIVE_STATUSES)[number];
-
-export function isActive(status: string): status is ActiveStatus {
-    return (ACTIVE_STATUSES as readonly string[]).includes(status);
-}
+// The constants live in `constants.ts` (browser-safe); re-exported so server code keeps one import.
+export {
+    ACTIVE_STATUSES,
+    BACKUP_STATUSES,
+    PROTOCOLS,
+    SECRET_MASK,
+    TRIGGER_TYPES,
+    isActive,
+} from './constants';
+export type { ActiveStatus, BackupStatus, TriggerType } from './constants';
 
 // ============ Field schemas ============
 
@@ -59,7 +53,7 @@ export const webRootPathSchema = z
 
 export const cronSchema = z.string().trim().refine(validateCron, 'Invalid cron expression');
 
-export const emailSchema = z.email().trim().toLowerCase();
+export const emailSchema = z.string().trim().toLowerCase().pipe(z.email());
 
 export const passwordSchema = z.string().min(12, 'At least 12 characters');
 
@@ -96,6 +90,18 @@ export const siteUpdateSchema = siteCreateSchema.extend({
 export type SiteCreateInput = z.infer<typeof siteCreateSchema>;
 export type SiteUpdateInput = z.infer<typeof siteUpdateSchema>;
 
+/** Connection fields of the site form, tested before the site is saved. An empty password means "the stored one" when a site id is known. */
+export const connectionTestSchema = siteCreateSchema
+    .pick({ protocol: true, host: true, port: true, username: true, webRootPath: true })
+    .extend({
+        password: z
+            .string()
+            .optional()
+            .transform((value) => value || undefined),
+    });
+
+export type ConnectionTestInput = z.infer<typeof connectionTestSchema>;
+
 // ============ Settings ============
 
 const optionalText = z
@@ -106,16 +112,17 @@ const optionalText = z
     .transform((value) => value || null);
 
 export const settingsSchema = z.object({
+    githubName: optionalText,
     githubEmail: emailSchema
         .nullable()
         .default(null)
         .or(z.literal('').transform(() => null)),
-    /** Plain token to store, or undefined/masked value to keep the current one. */
+    /** Plain token to store, or empty/masked value to keep the current one. */
     githubToken: z
         .string()
         .trim()
         .optional()
-        .transform((value) => value || undefined),
+        .transform((value) => (value && value !== SECRET_MASK ? value : undefined)),
     spTenantId: optionalText,
     spClientId: optionalText,
     spCertThumbprint: optionalText,
@@ -129,6 +136,11 @@ export const settingsSchema = z.object({
 });
 
 export type SettingsInput = z.infer<typeof settingsSchema>;
+
+/** Token to check; empty or masked means the stored one. */
+export const githubTestSchema = z.object({
+    githubToken: settingsSchema.shape.githubToken,
+});
 
 // ============ Backups ============
 

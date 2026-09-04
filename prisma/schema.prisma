@@ -64,6 +64,7 @@ model Backup {
 // Singleton row, id = 1
 model Settings {
   id               Int      @id @default(1)
+  githubName       String? // commit author name, defaults to "WP Backup Manager" when empty
   githubEmail      String? // commit author email
   githubTokenEnc   String? // fine-grained PAT: Contents read/write, Metadata read
   spTenantId       String?

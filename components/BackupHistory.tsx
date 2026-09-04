@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { BackupWithDomain } from '@/lib/db';
-import { formatDuration, formatSize, optionLabels } from '@/lib/format';
+import { useJobStatus } from '@/components/JobStatusProvider';
+import { LogModal } from '@/components/LogModal';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Badge } from '@/components/ui/badge';
-import { LogModal } from '@/components/LogModal';
 import {
     Table,
     TableBody,
@@ -15,12 +14,8 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-
-interface ActiveBackup {
-    id: number;
-    siteId: number;
-    domain: string;
-}
+import type { BackupWithDomain } from '@/lib/db';
+import { formatDuration, formatSize, optionLabels } from '@/lib/format';
 
 const isActive = (status: string) => status === 'pending' || status === 'running';
 
@@ -32,32 +27,18 @@ export function BackupHistory({
     backups,
     showDomain = true,
     siteId,
+    statusFilter,
 }: {
     backups: BackupWithDomain[];
     showDomain?: boolean;
+    /** Only this site's active backups are added as extra rows. */
     siteId?: number;
+    /** Only active backups in this status are added as extra rows. */
+    statusFilter?: string;
 }) {
-    const [runningJobs, setRunningJobs] = useState<ActiveBackup[]>([]);
+    const { active } = useJobStatus();
     const [modal, setModal] = useState<ModalState | null>(null);
     const router = useRouter();
-
-    useEffect(() => {
-        const fetchStatus = async () => {
-            try {
-                const res = await fetch('/api/backups/status');
-                const data = await res.json();
-                setRunningJobs([...data.running, ...data.pending]);
-            } catch {
-                /* ignore */
-            }
-        };
-        fetchStatus();
-        const interval = setInterval(() => {
-            fetchStatus();
-            if (runningJobs.length > 0) router.refresh();
-        }, 3000);
-        return () => clearInterval(interval);
-    }, [runningJobs.length, router]);
 
     // The row is the job: a pending or running row is followed live under its own id.
     function handleRowClick(backup: BackupWithDomain) {
@@ -73,10 +54,14 @@ export function BackupHistory({
         }
     }
 
-    // Active backups queued since this page was rendered, not yet in its rows
-    const relevantRunning = siteId ? runningJobs.filter((j) => j.siteId === siteId) : runningJobs;
+    // Active backups queued since this page was rendered, shown until the next server refresh brings their rows.
     const knownIds = new Set(backups.map((b) => b.id));
-    const extraRunning = relevantRunning.filter((j) => !knownIds.has(j.id));
+    const extraRows = active.filter(
+        (j) =>
+            !knownIds.has(j.id) &&
+            (siteId === undefined || j.siteId === siteId) &&
+            (statusFilter === undefined || j.status === statusFilter),
+    );
 
     return (
         <>
@@ -95,9 +80,9 @@ export function BackupHistory({
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {extraRunning.map((job) => (
+                        {extraRows.map((job) => (
                             <TableRow
-                                key={`running-${job.id}`}
+                                key={`active-${job.id}`}
                                 className="cursor-pointer hover:bg-muted/50"
                                 onClick={() =>
                                     setModal({
@@ -112,12 +97,7 @@ export function BackupHistory({
                                     <TableCell className="font-medium">{job.domain}</TableCell>
                                 )}
                                 <TableCell>
-                                    <Badge
-                                        variant="outline"
-                                        className="animate-pulse border-primary text-primary"
-                                    >
-                                        RUNNING
-                                    </Badge>
+                                    <StatusBadge status={job.status} />
                                 </TableCell>
                                 <TableCell className="text-muted-foreground">Now</TableCell>
                                 <TableCell className="hidden sm:table-cell text-muted-foreground">
@@ -147,16 +127,7 @@ export function BackupHistory({
                                     </TableCell>
                                 )}
                                 <TableCell>
-                                    {backup.status === 'running' ? (
-                                        <Badge
-                                            variant="outline"
-                                            className="animate-pulse border-primary text-primary"
-                                        >
-                                            RUNNING
-                                        </Badge>
-                                    ) : (
-                                        <StatusBadge status={backup.status} />
-                                    )}
+                                    <StatusBadge status={backup.status} />
                                 </TableCell>
                                 <TableCell className="text-muted-foreground">
                                     {new Date(backup.startedAt ?? backup.queuedAt).toLocaleString()}
@@ -179,7 +150,20 @@ export function BackupHistory({
                                     {backup.dumpSizeBytes ? formatSize(backup.dumpSizeBytes) : '-'}
                                 </TableCell>
                                 <TableCell className="font-mono text-xs text-muted-foreground">
-                                    {backup.commitSha || '-'}
+                                    {backup.releaseUrl ? (
+                                        <a
+                                            href={backup.releaseUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-primary hover:underline"
+                                            onClick={(e) => e.stopPropagation()}
+                                            title={backup.commitSha ?? undefined}
+                                        >
+                                            {backup.tag ?? backup.commitSha?.slice(0, 12)}
+                                        </a>
+                                    ) : (
+                                        (backup.commitSha?.slice(0, 12) ?? '-')
+                                    )}
                                 </TableCell>
                             </TableRow>
                         ))}
@@ -218,6 +202,8 @@ export function BackupHistory({
                     filesUnchanged={modal.backup.filesUnchanged}
                     dumpSizeBytes={modal.backup.dumpSizeBytes}
                     commitSha={modal.backup.commitSha}
+                    tag={modal.backup.tag}
+                    releaseUrl={modal.backup.releaseUrl}
                     fullDownload={modal.backup.fullDownload}
                     skipGit={modal.backup.skipGit}
                     onClose={() => setModal(null)}

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import SftpClient from 'ssh2-sftp-client';
-import type { SiteConfig } from '../types';
+import type { ConnectionConfig } from '../types';
 import type { RemoteClient, RemoteClientFactory, RemoteEntry } from './client';
 
 const READY_TIMEOUT_MS = 30_000;
@@ -12,7 +12,7 @@ const KEEPALIVE_INTERVAL_MS = 10_000;
  */
 const POOL_SIZE = 3;
 
-export function createSftpFactory(site: SiteConfig): RemoteClientFactory {
+export function createSftpFactory(site: ConnectionConfig): RemoteClientFactory {
     return {
         poolSize: POOL_SIZE,
         async create() {

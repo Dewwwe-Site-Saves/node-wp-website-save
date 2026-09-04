@@ -45,6 +45,7 @@ async function rebuild(): Promise<void> {
     await stop();
     const [settings, sites] = await Promise.all([getSettings(), listSites()]);
     const timezone = process.env.TZ || undefined;
+    const armed: string[] = [];
 
     for (const site of sites) {
         if (!site.enabled) continue;
@@ -52,6 +53,7 @@ async function rebuild(): Promise<void> {
         try {
             const task = schedule(expression, () => trigger(site.id, site.domain), { timezone });
             state.tasks.set(site.id, task);
+            armed.push(`${site.domain} "${expression}"`);
         } catch (error) {
             // Expressions are validated on input; a bad one must not take the other sites down.
             console.error(
@@ -59,6 +61,10 @@ async function rebuild(): Promise<void> {
             );
         }
     }
+    // Every reload (boot, site or settings change) shows what is armed, so a schedule edit is visible in the server log.
+    console.log(
+        `[scheduler] ${armed.length} site(s) scheduled (TZ ${timezone ?? 'system'})${armed.length ? ': ' + armed.join(', ') : ''}`,
+    );
 }
 
 async function trigger(siteId: number, domain: string): Promise<void> {

@@ -1,23 +1,25 @@
 import { NextResponse } from 'next/server';
-import { jsonError, parseBody } from '@/lib/api';
+import { apiHandler, jsonError, parseBody } from '@/lib/api';
 import { deleteSite, getSite, isUniqueViolation, listBackups, updateSite } from '@/lib/db';
 import * as scheduler from '@/lib/jobs/scheduler';
+import { requireRole } from '@/lib/session';
 import { backupsQuerySchema, parseId, siteUpdateSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function GET(request: Request, { params }: Params) {
+export const GET = apiHandler(async (request: Request, { params }: Params) => {
     const id = parseId((await params).id);
     const site = id ? await getSite(id) : null;
     if (!site) return jsonError(404, 'Site not found');
 
     const backups = await listBackups(backupsQuerySchema.parse({ siteId: site.id, pageSize: 20 }));
     return NextResponse.json({ site, backups: backups.items });
-}
+});
 
-export async function PUT(request: Request, { params }: Params) {
+export const PUT = apiHandler(async (request: Request, { params }: Params) => {
+    await requireRole('admin');
     const id = parseId((await params).id);
     const site = id ? await getSite(id) : null;
     if (!site) return jsonError(404, 'Site not found');
@@ -35,9 +37,10 @@ export async function PUT(request: Request, { params }: Params) {
         }
         throw error;
     }
-}
+});
 
-export async function DELETE(request: Request, { params }: Params) {
+export const DELETE = apiHandler(async (request: Request, { params }: Params) => {
+    await requireRole('admin');
     const id = parseId((await params).id);
     const site = id ? await getSite(id) : null;
     if (!site) return jsonError(404, 'Site not found');
@@ -45,4 +48,4 @@ export async function DELETE(request: Request, { params }: Params) {
     await deleteSite(site.id);
     await scheduler.reload();
     return NextResponse.json({ success: true });
-}
+});
