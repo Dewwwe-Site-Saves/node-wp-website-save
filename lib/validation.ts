@@ -22,22 +22,34 @@ const REPO_NAME = /^(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 // Only GitHub over HTTPS, no credentials in the URL.
 const GITHUB_HTTPS_URL = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?(\.git)?$/;
 
-export const domainSchema = z.string().trim().toLowerCase().regex(HOSTNAME, 'Must be a valid hostname (e.g. mysite.com)');
+export const domainSchema = z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(HOSTNAME, 'Must be a valid hostname (e.g. mysite.com)');
 
-export const repoNameSchema = z.string().trim().regex(REPO_NAME, 'Letters, digits, dots, dashes and underscores only');
+export const repoNameSchema = z
+    .string()
+    .trim()
+    .regex(REPO_NAME, 'Letters, digits, dots, dashes and underscores only');
 
 export const repoUrlSchema = z
     .string()
     .trim()
     .regex(GITHUB_HTTPS_URL, 'Must be https://github.com/<owner>/<repo>.git')
-    .transform(url => (url.endsWith('.git') ? url : `${url}.git`));
+    .transform((url) => (url.endsWith('.git') ? url : `${url}.git`));
 
 /** Path of the site under the FTP/SFTP root. Empty string means the root itself. */
 export const webRootPathSchema = z
     .string()
     .trim()
-    .transform(value => value.replace(/^\/+|\/+$/g, ''))
-    .refine(value => !value.includes('\\') && !value.split('/').some(segment => segment === '..' || segment === '.'), 'Invalid path');
+    .transform((value) => value.replace(/^\/+|\/+$/g, ''))
+    .refine(
+        (value) =>
+            !value.includes('\\') &&
+            !value.split('/').some((segment) => segment === '..' || segment === '.'),
+        'Invalid path',
+    );
 
 export const cronSchema = z.string().trim().refine(validateCron, 'Invalid cron expression');
 
@@ -57,14 +69,22 @@ export const siteCreateSchema = z.object({
     username: z.string().trim().min(1, 'Required'),
     password: z.string().min(1, 'Required'),
     webRootPath: webRootPathSchema.default('www'),
-    spListItemId: z.string().trim().nullable().default(null).transform(value => value || null),
+    spListItemId: z
+        .string()
+        .trim()
+        .nullable()
+        .default(null)
+        .transform((value) => value || null),
     cronSchedule: cronSchema.nullable().default(null),
     enabled: z.boolean().default(true),
 });
 
 /** Same as create, but an empty or missing password keeps the stored one. */
 export const siteUpdateSchema = siteCreateSchema.extend({
-    password: z.string().optional().transform(value => value || undefined),
+    password: z
+        .string()
+        .optional()
+        .transform((value) => value || undefined),
 });
 
 export type SiteCreateInput = z.infer<typeof siteCreateSchema>;
@@ -72,12 +92,24 @@ export type SiteUpdateInput = z.infer<typeof siteUpdateSchema>;
 
 // ============ Settings ============
 
-const optionalText = z.string().trim().nullable().default(null).transform(value => value || null);
+const optionalText = z
+    .string()
+    .trim()
+    .nullable()
+    .default(null)
+    .transform((value) => value || null);
 
 export const settingsSchema = z.object({
-    githubEmail: emailSchema.nullable().default(null).or(z.literal('').transform(() => null)),
+    githubEmail: emailSchema
+        .nullable()
+        .default(null)
+        .or(z.literal('').transform(() => null)),
     /** Plain token to store, or undefined/masked value to keep the current one. */
-    githubToken: z.string().trim().optional().transform(value => value || undefined),
+    githubToken: z
+        .string()
+        .trim()
+        .optional()
+        .transform((value) => value || undefined),
     spTenantId: optionalText,
     spClientId: optionalText,
     spCertThumbprint: optionalText,
@@ -120,7 +152,7 @@ export const setupSchema = z
         password: passwordSchema,
         passwordConfirmation: z.string(),
     })
-    .refine(data => data.password === data.passwordConfirmation, {
+    .refine((data) => data.password === data.passwordConfirmation, {
         message: 'Passwords do not match',
         path: ['passwordConfirmation'],
     });
@@ -136,7 +168,7 @@ export const changePasswordSchema = z
         newPassword: passwordSchema,
         passwordConfirmation: z.string(),
     })
-    .refine(data => data.newPassword === data.passwordConfirmation, {
+    .refine((data) => data.newPassword === data.passwordConfirmation, {
         message: 'Passwords do not match',
         path: ['passwordConfirmation'],
     });

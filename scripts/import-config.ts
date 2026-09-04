@@ -91,10 +91,13 @@ async function main(): Promise<void> {
         },
         update: {
             githubEmail: current?.githubEmail ?? config.github?.mail ?? null,
-            githubTokenEnc: current?.githubTokenEnc ?? (config.github?.appPass ? encrypt(config.github.appPass) : null),
+            githubTokenEnc:
+                current?.githubTokenEnc ??
+                (config.github?.appPass ? encrypt(config.github.appPass) : null),
             spTenantId: current?.spTenantId ?? config.sharepoint?.tenantID ?? null,
             spClientId: current?.spClientId ?? config.sharepoint?.applicationClientID ?? null,
-            spCertThumbprint: current?.spCertThumbprint ?? config.sharepoint?.certificateThumbprint ?? null,
+            spCertThumbprint:
+                current?.spCertThumbprint ?? config.sharepoint?.certificateThumbprint ?? null,
             spTenantName: current?.spTenantName ?? config.sharepoint?.tenantName ?? null,
             spSiteName: current?.spSiteName ?? config.sharepoint?.siteName ?? null,
             spListName: current?.spListName ?? config.sharepoint?.listName ?? null,
@@ -152,7 +155,7 @@ async function main(): Promise<void> {
     await prisma.$disconnect();
 }
 
-main().catch(error => {
+main().catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);
 });

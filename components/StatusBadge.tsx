@@ -9,14 +9,14 @@ export function StatusBadge({ status }: StatusBadgeProps) {
         return <Badge variant="outline">PENDING</Badge>;
     }
 
-    const variant = status === 'success' ? 'default'
-        : status === 'error' ? 'destructive'
-        : status === 'cancelled' ? 'outline'
-        : 'secondary';
+    const variant =
+        status === 'success'
+            ? 'default'
+            : status === 'error'
+              ? 'destructive'
+              : status === 'cancelled'
+                ? 'outline'
+                : 'secondary';
 
-    return (
-        <Badge variant={variant}>
-            {status.toUpperCase()}
-        </Badge>
-    );
+    return <Badge variant={variant}>{status.toUpperCase()}</Badge>;
 }

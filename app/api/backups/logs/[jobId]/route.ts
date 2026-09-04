@@ -16,16 +16,26 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
     const stream = new ReadableStream({
         start(controller) {
             // Send current status
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'status', status: job.status, domain: job.domain })}\n\n`));
+            controller.enqueue(
+                encoder.encode(
+                    `data: ${JSON.stringify({ type: 'status', status: job.status, domain: job.domain })}\n\n`,
+                ),
+            );
 
             // Replay all past log lines
             for (const entry of job.logLines) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'log', ...entry })}\n\n`));
+                controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ type: 'log', ...entry })}\n\n`),
+                );
             }
 
             // If already done, close
             if (job.status === 'complete' || job.status === 'error' || job.status === 'cancelled') {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', status: job.status })}\n\n`));
+                controller.enqueue(
+                    encoder.encode(
+                        `data: ${JSON.stringify({ type: 'done', status: job.status })}\n\n`,
+                    ),
+                );
                 controller.close();
                 return;
             }
@@ -33,12 +43,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
             // Listen for new log events
             function onLog(event: any) {
                 if (event.jobId !== id) return;
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'log', ...event })}\n\n`));
+                controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ type: 'log', ...event })}\n\n`),
+                );
             }
 
             function onDone(event: any) {
                 if (event.jobId !== id) return;
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', status: event.status })}\n\n`));
+                controller.enqueue(
+                    encoder.encode(
+                        `data: ${JSON.stringify({ type: 'done', status: event.status })}\n\n`,
+                    ),
+                );
                 cleanup();
                 controller.close();
             }
@@ -56,7 +72,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
 
             request.signal.addEventListener('abort', () => {
                 cleanup();
-                try { controller.close(); } catch { /* already closed */ }
+                try {
+                    controller.close();
+                } catch {
+                    /* already closed */
+                }
             });
         },
     });
@@ -65,7 +85,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
         headers: {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
+            Connection: 'keep-alive',
         },
     });
 }

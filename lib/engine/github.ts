@@ -20,12 +20,18 @@ export class GithubApiError extends Error {
 
 /** Owner and repository name from a `https://github.com/<owner>/<repo>(.git)` URL. */
 export function parseRepoUrl(repoUrl: string): RepoRef {
-    const match = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(repoUrl);
+    const match =
+        /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(repoUrl);
     if (!match) throw new Error(`Not a GitHub HTTPS repository URL: ${repoUrl}`);
     return { owner: match[1]!, repo: match[2]! };
 }
 
-async function request<T>(token: string, method: 'GET' | 'POST', route: string, body?: unknown): Promise<T> {
+async function request<T>(
+    token: string,
+    method: 'GET' | 'POST',
+    route: string,
+    body?: unknown,
+): Promise<T> {
     const response = await fetch(`${API_BASE}${route}`, {
         method,
         headers: {
@@ -40,8 +46,12 @@ async function request<T>(token: string, method: 'GET' | 'POST', route: string, 
     });
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-        const detail = isRecord(payload) && typeof payload.message === 'string' ? `: ${payload.message}` : '';
-        throw new GithubApiError(response.status, `GitHub API ${response.status} on ${method} ${route}${detail}`);
+        const detail =
+            isRecord(payload) && typeof payload.message === 'string' ? `: ${payload.message}` : '';
+        throw new GithubApiError(
+            response.status,
+            `GitHub API ${response.status} on ${method} ${route}${detail}`,
+        );
     }
     return payload as T;
 }
@@ -56,14 +66,24 @@ export interface ReleaseInput {
 }
 
 /** Creates a Release on an existing tag and returns its web URL. */
-export async function createRelease(token: string, ref: RepoRef, tag: string, input: ReleaseInput): Promise<string> {
-    const release = await request<{ html_url: string }>(token, 'POST', `/repos/${ref.owner}/${ref.repo}/releases`, {
-        tag_name: tag,
-        name: input.name,
-        body: input.body,
-        draft: false,
-        prerelease: false,
-    });
+export async function createRelease(
+    token: string,
+    ref: RepoRef,
+    tag: string,
+    input: ReleaseInput,
+): Promise<string> {
+    const release = await request<{ html_url: string }>(
+        token,
+        'POST',
+        `/repos/${ref.owner}/${ref.repo}/releases`,
+        {
+            tag_name: tag,
+            name: input.name,
+            body: input.body,
+            draft: false,
+            prerelease: false,
+        },
+    );
     return release.html_url;
 }
 
@@ -80,7 +100,11 @@ export interface RepoAccess {
 }
 
 export async function checkRepoAccess(token: string, ref: RepoRef): Promise<RepoAccess> {
-    const repo = await request<{ private: boolean; permissions?: { push?: boolean } }>(token, 'GET', `/repos/${ref.owner}/${ref.repo}`);
+    const repo = await request<{ private: boolean; permissions?: { push?: boolean } }>(
+        token,
+        'GET',
+        `/repos/${ref.owner}/${ref.repo}`,
+    );
     return { private: repo.private, canPush: repo.permissions?.push === true };
 }
 

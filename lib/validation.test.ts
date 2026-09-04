@@ -29,7 +29,14 @@ describe('domainSchema', () => {
     });
 
     it('rejects anything that is not a bare hostname', () => {
-        for (const value of ['localhost', 'my site.com', 'https://mysite.com', 'mysite.com/', '../etc', '-bad.com']) {
+        for (const value of [
+            'localhost',
+            'my site.com',
+            'https://mysite.com',
+            'mysite.com/',
+            '../etc',
+            '-bad.com',
+        ]) {
             expect(domainSchema.safeParse(value).success, value).toBe(false);
         }
     });
@@ -49,8 +56,12 @@ describe('repoNameSchema', () => {
 
 describe('repoUrlSchema', () => {
     it('accepts GitHub HTTPS urls and appends .git', () => {
-        expect(repoUrlSchema.parse('https://github.com/org/repo')).toBe('https://github.com/org/repo.git');
-        expect(repoUrlSchema.parse('https://github.com/org/repo.git')).toBe('https://github.com/org/repo.git');
+        expect(repoUrlSchema.parse('https://github.com/org/repo')).toBe(
+            'https://github.com/org/repo.git',
+        );
+        expect(repoUrlSchema.parse('https://github.com/org/repo.git')).toBe(
+            'https://github.com/org/repo.git',
+        );
     });
 
     it('rejects ssh urls, credentials and other hosts', () => {
@@ -103,8 +114,12 @@ describe('siteCreateSchema', () => {
     });
 
     it('turns an empty SharePoint id into null', () => {
-        expect(siteCreateSchema.parse({ ...validSite, spListItemId: '  ' }).spListItemId).toBeNull();
-        expect(siteCreateSchema.parse({ ...validSite, spListItemId: '12' }).spListItemId).toBe('12');
+        expect(
+            siteCreateSchema.parse({ ...validSite, spListItemId: '  ' }).spListItemId,
+        ).toBeNull();
+        expect(siteCreateSchema.parse({ ...validSite, spListItemId: '12' }).spListItemId).toBe(
+            '12',
+        );
     });
 
     it('requires a password on create but not on update', () => {
@@ -123,8 +138,13 @@ describe('siteCreateSchema', () => {
 describe('backupsQuerySchema', () => {
     it('coerces query strings with defaults', () => {
         expect(backupsQuerySchema.parse({})).toEqual({ page: 1, pageSize: 20 });
-        expect(backupsQuerySchema.parse({ siteId: '3', status: 'error', page: '2', pageSize: '50' })).toEqual({
-            siteId: 3, status: 'error', page: 2, pageSize: 50,
+        expect(
+            backupsQuerySchema.parse({ siteId: '3', status: 'error', page: '2', pageSize: '50' }),
+        ).toEqual({
+            siteId: 3,
+            status: 'error',
+            page: 2,
+            pageSize: 50,
         });
     });
 

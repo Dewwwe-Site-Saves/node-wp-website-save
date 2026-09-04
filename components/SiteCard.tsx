@@ -10,7 +10,10 @@ export function SiteCard({ site }: { site: SiteWithLastBackup }) {
 
     return (
         <Link href={`/sites/${site.id}`} className="no-underline">
-            <Card className="border-l-4 hover:bg-muted/50 transition-colors cursor-pointer" style={{ borderLeftColor: statusColor(last?.status ?? null) }}>
+            <Card
+                className="border-l-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                style={{ borderLeftColor: statusColor(last?.status ?? null) }}
+            >
                 <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                         <CardTitle className="text-base">{site.domain}</CardTitle>

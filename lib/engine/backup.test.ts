@@ -8,9 +8,12 @@ import type { LogEntry, SiteConfig } from './types';
 
 // Remote clients are replaced by the in-memory server; git runs for real on a bare repo.
 const { remoteRef } = vi.hoisted(() => ({ remoteRef: { current: null as unknown } }));
-vi.mock('./remote', async importOriginal => {
+vi.mock('./remote', async (importOriginal) => {
     const actual = await importOriginal<typeof import('./remote')>();
-    return { ...actual, createRemoteFactory: () => (remoteRef.current as { factory(): unknown }).factory() };
+    return {
+        ...actual,
+        createRemoteFactory: () => (remoteRef.current as { factory(): unknown }).factory(),
+    };
 });
 
 const { FakeRemote } = await import('./testing/fake-remote');
@@ -31,18 +34,25 @@ function bareGit(...args: string[]): string {
 }
 
 function stubDumpEndpoint(): void {
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-        const url = String(input);
-        if (url === 'https://site.test/dewwwe-backup.php') {
-            remote.put('/www/db_wp_0011223344556677.sql', SQL);
-            return new Response(JSON.stringify({ status: 'ok', file: 'db_wp_0011223344556677.sql' }), { status: 200 });
-        }
-        return new Response(JSON.stringify({ message: 'unexpected call' }), { status: 500 });
-    }));
+    vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: string | URL | Request) => {
+            const url = String(input);
+            if (url === 'https://site.test/dewwwe-backup.php') {
+                remote.put('/www/db_wp_0011223344556677.sql', SQL);
+                return new Response(
+                    JSON.stringify({ status: 'ok', file: 'db_wp_0011223344556677.sql' }),
+                    { status: 200 },
+                );
+            }
+            return new Response(JSON.stringify({ message: 'unexpected call' }), { status: 500 });
+        }),
+    );
 }
 
 beforeAll(() => {
-    for (const key of ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM']) savedEnv[key] = process.env[key];
+    for (const key of ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM'])
+        savedEnv[key] = process.env[key];
     process.env.GIT_CONFIG_GLOBAL = '/dev/null';
     process.env.GIT_CONFIG_NOSYSTEM = '1';
 });
@@ -86,7 +96,14 @@ afterEach(() => {
 });
 
 function run(overrides: Partial<Parameters<typeof runBackup>[3]> = {}) {
-    return runBackup(site, github, null, { localRoot, triggerType: 'manual', fullDownload: false, skipGit: false, onLog: e => entries.push(e), ...overrides });
+    return runBackup(site, github, null, {
+        localRoot,
+        triggerType: 'manual',
+        fullDownload: false,
+        skipGit: false,
+        onLog: (e) => entries.push(e),
+        ...overrides,
+    });
 }
 
 describe('runBackup', () => {
@@ -103,11 +120,17 @@ describe('runBackup', () => {
         expect(result.log).toContain('Release creation failed');
 
         expect(bareGit('tag')).toBe(result.tag);
-        expect(bareGit('ls-tree', '--name-only', 'main')).toBe(['.gitignore', 'db.sql', 'www'].join('\n'));
+        expect(bareGit('ls-tree', '--name-only', 'main')).toBe(
+            ['.gitignore', 'db.sql', 'www'].join('\n'),
+        );
         expect(fs.readFileSync(path.join(localRoot, 'db.sql'), 'utf8')).toBe(SQL);
 
         // Nothing of ours is left on the remote.
-        expect([...remote.files.keys()].sort()).toEqual(['/www/index.php', '/www/wp-config.php', '/www/wp-content/uploads/a.jpg']);
+        expect([...remote.files.keys()].sort()).toEqual([
+            '/www/index.php',
+            '/www/wp-config.php',
+            '/www/wp-content/uploads/a.jpg',
+        ]);
     });
 
     it('creates no snapshot when nothing changed', async () => {
@@ -126,10 +149,24 @@ describe('runBackup', () => {
         remote.put('/www/dewwwe-backup.php', 'x');
         await run();
         fs.mkdirSync(path.join(localRoot, '.github', 'workflows'), { recursive: true });
-        fs.writeFileSync(path.join(localRoot, '.github', 'workflows', 'auto-tagged-release.yml'), 'legacy');
+        fs.writeFileSync(
+            path.join(localRoot, '.github', 'workflows', 'auto-tagged-release.yml'),
+            'legacy',
+        );
         fs.writeFileSync(path.join(localRoot, 'www', 'db_legacy_123.sql'), 'legacy');
         execFileSync('git', ['-C', localRoot, 'add', '--all']);
-        execFileSync('git', ['-C', localRoot, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'legacy']);
+        execFileSync('git', [
+            '-C',
+            localRoot,
+            '-c',
+            'user.name=t',
+            '-c',
+            'user.email=t@t',
+            'commit',
+            '--quiet',
+            '-m',
+            'legacy',
+        ]);
         execFileSync('git', ['-C', localRoot, 'push', '--quiet', 'origin', 'HEAD']);
 
         const result = await run();
@@ -139,7 +176,9 @@ describe('runBackup', () => {
         expect(remote.removals).toContain('/www/dewwwe-backup.php');
         expect(fs.existsSync(path.join(localRoot, '.github'))).toBe(false);
         expect(fs.existsSync(path.join(localRoot, 'www', 'db_legacy_123.sql'))).toBe(false);
-        expect(bareGit('ls-tree', '--name-only', '-r', 'main')).not.toContain('auto-tagged-release.yml');
+        expect(bareGit('ls-tree', '--name-only', '-r', 'main')).not.toContain(
+            'auto-tagged-release.yml',
+        );
     });
 
     it('skips git when asked', async () => {
@@ -151,7 +190,20 @@ describe('runBackup', () => {
     });
 
     it('reports a dump failure as an error and pushes nothing', async () => {
-        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'error', code: 'mysqldump_failed', message: 'boom' }), { status: 500 })));
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(
+                async () =>
+                    new Response(
+                        JSON.stringify({
+                            status: 'error',
+                            code: 'mysqldump_failed',
+                            message: 'boom',
+                        }),
+                        { status: 500 },
+                    ),
+            ),
+        );
         const result = await run();
         expect(result.status).toBe('error');
         expect(result.errorMessage).toContain('mysqldump_failed');

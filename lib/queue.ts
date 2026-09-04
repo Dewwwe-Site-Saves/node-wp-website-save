@@ -71,7 +71,9 @@ class BackupQueue extends EventEmitter {
             status: 'pending',
             backupId: null,
             logLines: [],
-            started: new Promise<number>(resolve => { resolveStarted = resolve; }),
+            started: new Promise<number>((resolve) => {
+                resolveStarted = resolve;
+            }),
             abort: null,
             run: async () => {
                 job.status = 'running';
@@ -80,7 +82,14 @@ class BackupQueue extends EventEmitter {
                 const skipGit = options.skipGit === true;
 
                 const backup = await prisma.backup.create({
-                    data: { siteId, status: 'running', triggerType: options.triggerType ?? 'manual', fullDownload, skipGit, startedAt: new Date() },
+                    data: {
+                        siteId,
+                        status: 'running',
+                        triggerType: options.triggerType ?? 'manual',
+                        fullDownload,
+                        skipGit,
+                        startedAt: new Date(),
+                    },
                 });
                 job.backupId = backup.id;
                 resolveStarted(backup.id);
@@ -88,9 +97,14 @@ class BackupQueue extends EventEmitter {
                 try {
                     if (job.abort.signal.aborted) throw new Error('Backup cancelled');
 
-                    const [siteConfig, github, sharepoint] = await Promise.all([getSiteConfig(siteId), getGithubConfig(), getSharePointConfig()]);
+                    const [siteConfig, github, sharepoint] = await Promise.all([
+                        getSiteConfig(siteId),
+                        getGithubConfig(),
+                        getSharePointConfig(),
+                    ]);
                     if (!siteConfig) throw new Error('Site was deleted');
-                    if (!github) throw new Error('GitHub token and email are not configured (Settings)');
+                    if (!github)
+                        throw new Error('GitHub token and email are not configured (Settings)');
 
                     const result = await runBackup(siteConfig, github, sharepoint, {
                         localRoot: path.join(filesDir(), siteConfig.repo),
@@ -98,9 +112,13 @@ class BackupQueue extends EventEmitter {
                         fullDownload,
                         skipGit,
                         signal: job.abort.signal,
-                        onLog: entry => {
+                        onLog: (entry) => {
                             job.logLines.push(entry);
-                            this.emit('log', { jobId, backupId: job.backupId, ...entry } satisfies LogEvent);
+                            this.emit('log', {
+                                jobId,
+                                backupId: job.backupId,
+                                ...entry,
+                            } satisfies LogEvent);
                         },
                     });
 
@@ -132,12 +150,18 @@ class BackupQueue extends EventEmitter {
                             status: job.status,
                             finishedAt: new Date(),
                             errorMessage: cancelled ? 'Cancelled by user' : message,
-                            log: job.logLines.map(l => `${l.time} [${l.level}] ${l.msg}`).join('\n'),
+                            log: job.logLines
+                                .map((l) => `${l.time} [${l.level}] ${l.msg}`)
+                                .join('\n'),
                         },
                     });
                 }
 
-                this.emit('done', { jobId, backupId: job.backupId, status: job.status } satisfies DoneEvent);
+                this.emit('done', {
+                    jobId,
+                    backupId: job.backupId,
+                    status: job.status,
+                } satisfies DoneEvent);
                 this.running--;
                 this.processNext();
             },
@@ -166,7 +190,7 @@ class BackupQueue extends EventEmitter {
         if (!job) return false;
         if (job.status === 'pending') {
             job.status = 'cancelled';
-            this.pending = this.pending.filter(j => j !== job);
+            this.pending = this.pending.filter((j) => j !== job);
             return true;
         }
         if (job.status === 'running' && job.abort) {
@@ -177,11 +201,11 @@ class BackupQueue extends EventEmitter {
     }
 
     getRunningJobs(): Job[] {
-        return [...jobs.values()].filter(j => j.status === 'running');
+        return [...jobs.values()].filter((j) => j.status === 'running');
     }
 
     getPendingJobs(): Job[] {
-        return [...jobs.values()].filter(j => j.status === 'pending');
+        return [...jobs.values()].filter((j) => j.status === 'pending');
     }
 }
 

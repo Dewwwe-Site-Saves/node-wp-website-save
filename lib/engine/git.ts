@@ -18,7 +18,8 @@ const MAX_BUFFER = 64 * 1024 * 1024;
  * The empty `credential.helper=` entry before it resets the helper list, so the machine's
  * own helpers (osxkeychain, libsecret) are neither consulted nor asked to store anything.
  */
-const CREDENTIAL_HELPER = '!f() { echo username=x-access-token; echo "password=$GIT_BACKUP_TOKEN"; }; f';
+const CREDENTIAL_HELPER =
+    '!f() { echo username=x-access-token; echo "password=$GIT_BACKUP_TOKEN"; }; f';
 
 export interface GitContext {
     /** Working directory of the clone. */
@@ -45,15 +46,25 @@ type ExecError = Error & { code?: number | string; stderr?: string; killed?: boo
  */
 export async function git(args: string[], ctx: GitContext, cwd = ctx.cwd): Promise<string> {
     const config = [
-        '-c', `user.name=${AUTHOR_NAME}`,
-        '-c', `user.email=${ctx.email}`,
-        '-c', 'http.postBuffer=157286400',
-        '-c', 'credential.helper=',
-        '-c', `credential.helper=${CREDENTIAL_HELPER}`,
+        '-c',
+        `user.name=${AUTHOR_NAME}`,
+        '-c',
+        `user.email=${ctx.email}`,
+        '-c',
+        'http.postBuffer=157286400',
+        '-c',
+        'credential.helper=',
+        '-c',
+        `credential.helper=${CREDENTIAL_HELPER}`,
     ];
     const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_BACKUP_TOKEN: ctx.token ?? '' };
     try {
-        const { stdout } = await execFileAsync('git', [...config, ...args], { cwd, env, maxBuffer: MAX_BUFFER, signal: ctx.signal });
+        const { stdout } = await execFileAsync('git', [...config, ...args], {
+            cwd,
+            env,
+            maxBuffer: MAX_BUFFER,
+            signal: ctx.signal,
+        });
         return stdout;
     } catch (error) {
         throw toGitError(error as ExecError, args[0] ?? 'git', ctx.token);
@@ -67,7 +78,9 @@ function toGitError(error: ExecError, command: string, token: string | null): Er
     if (token) detail = detail.replaceAll(token, '***');
     if (detail.length > 1000) detail = `${detail.slice(0, 1000)}…`;
     if (error.code === 'ENOENT') return new GitError('git executable not found');
-    return new GitError(`git ${command} failed${detail ? `: ${detail}` : ` (exit code ${String(error.code)})`}`);
+    return new GitError(
+        `git ${command} failed${detail ? `: ${detail}` : ` (exit code ${String(error.code)})`}`,
+    );
 }
 
 /** `YYYYMMDD-HHmmss` in UTC: sortable, unique within a second. */
@@ -115,7 +128,9 @@ export async function ensureRepo(ctx: GitContext, repoUrl: string, log: Logger):
 async function remoteDefaultBranch(ctx: GitContext): Promise<string | null> {
     try {
         await git(['remote', 'set-head', 'origin', '--auto'], ctx);
-        const ref = (await git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], ctx)).trim();
+        const ref = (
+            await git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], ctx)
+        ).trim();
         return ref.replace(/^origin\//, '') || null;
     } catch {
         return null;
@@ -133,7 +148,12 @@ export interface CommitResult {
  * Stages everything and commits with `tag` when the tree changed. With a clean tree no
  * commit and no tag are created, so a run that downloaded nothing leaves no empty snapshot.
  */
-export async function commitAndTag(ctx: GitContext, message: string, tag: string, log: Logger): Promise<CommitResult> {
+export async function commitAndTag(
+    ctx: GitContext,
+    message: string,
+    tag: string,
+    log: Logger,
+): Promise<CommitResult> {
     await git(['add', '--all'], ctx);
     const status = await git(['status', '--porcelain'], ctx);
     if (status.trim() === '') {

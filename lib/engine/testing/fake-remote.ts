@@ -15,7 +15,11 @@ export class FakeRemote {
     readonly uploads: string[] = [];
     readonly removals: string[] = [];
 
-    put(remotePath: string, content: string | Buffer, mtime = new Date('2026-01-01T00:00:00Z')): void {
+    put(
+        remotePath: string,
+        content: string | Buffer,
+        mtime = new Date('2026-01-01T00:00:00Z'),
+    ): void {
         this.files.set(remotePath, { content: Buffer.from(content), mtime });
     }
 
@@ -29,7 +33,7 @@ export class FakeRemote {
 
     client(): RemoteClient {
         return {
-            list: async dir => {
+            list: async (dir) => {
                 if (this.unlistable.has(dir)) throw new Error('Permission denied');
                 const prefix = dir === '/' ? '/' : `${dir}/`;
                 const entries = new Map<string, RemoteEntry>();
@@ -38,9 +42,19 @@ export class FakeRemote {
                     const [head, ...tail] = filePath.slice(prefix.length).split('/');
                     const entryPath = `${prefix}${head}`;
                     if (tail.length === 0) {
-                        entries.set(entryPath, { path: entryPath, type: 'file', size: file.content.length, mtime: file.mtime });
+                        entries.set(entryPath, {
+                            path: entryPath,
+                            type: 'file',
+                            size: file.content.length,
+                            mtime: file.mtime,
+                        });
                     } else if (!entries.has(entryPath)) {
-                        entries.set(entryPath, { path: entryPath, type: 'dir', size: 0, mtime: null });
+                        entries.set(entryPath, {
+                            path: entryPath,
+                            type: 'dir',
+                            size: 0,
+                            mtime: null,
+                        });
                     }
                 }
                 return [...entries.values()];
@@ -57,7 +71,7 @@ export class FakeRemote {
                 this.uploads.push(remotePath);
                 this.put(remotePath, content, new Date());
             },
-            remove: async remotePath => {
+            remove: async (remotePath) => {
                 this.removals.push(remotePath);
                 if (!this.files.delete(remotePath)) throw new Error('No such file');
             },

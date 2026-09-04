@@ -9,7 +9,8 @@ export function SiteDetailActions({ siteId }: { siteId: number }) {
     const [deleting, setDeleting] = useState(false);
 
     async function handleDelete() {
-        if (!confirm('Are you sure you want to delete this site? All backup history will be lost.')) return;
+        if (!confirm('Are you sure you want to delete this site? All backup history will be lost.'))
+            return;
 
         setDeleting(true);
         try {

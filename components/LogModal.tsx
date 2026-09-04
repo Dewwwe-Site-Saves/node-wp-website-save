@@ -56,10 +56,15 @@ type LogModalProps = RunModeProps | LiveModeProps | HistoryModeProps;
 
 export function LogModal(props: LogModalProps) {
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4" onClick={props.onClose}>
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
+            onClick={props.onClose}
+        >
             <div className="absolute inset-0 bg-black/50" />
-            <div className="relative w-full max-w-3xl max-h-[90vh] sm:max-h-[80vh] flex flex-col rounded-lg border bg-card shadow-lg overflow-hidden text-left"
-                onClick={e => e.stopPropagation()}>
+            <div
+                className="relative w-full max-w-3xl max-h-[90vh] sm:max-h-[80vh] flex flex-col rounded-lg border bg-card shadow-lg overflow-hidden text-left"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {props.mode === 'run' && <RunContent {...props} />}
                 {props.mode === 'live' && <LiveContent {...props} />}
                 {props.mode === 'history' && <HistoryContent {...props} />}
@@ -114,35 +119,47 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
         setRunStatus(status);
         if ((status === 'success' || status === 'error' || status === 'cancelled') && backupId) {
             fetch(`/api/backups/${backupId}/log`)
-                .then(r => r.json())
-                .then(data => setStats({
-                    durationMs: data.durationMs,
-                    filesDownloaded: data.filesDownloaded,
-                    filesUnchanged: data.filesUnchanged,
-                    dumpSizeBytes: data.dumpSizeBytes,
-                    commitSha: data.commitSha,
-                }))
+                .then((r) => r.json())
+                .then((data) =>
+                    setStats({
+                        durationMs: data.durationMs,
+                        filesDownloaded: data.filesDownloaded,
+                        filesUnchanged: data.filesUnchanged,
+                        dumpSizeBytes: data.dumpSizeBytes,
+                        commitSha: data.commitSha,
+                    }),
+                )
                 .catch(() => {});
         }
     }
 
     return (
         <>
-            <ModalHeader domain={domain} siteId={siteId} status={runStatus} onClose={onClose} onCancel={jobId ? handleCancel : undefined} />
+            <ModalHeader
+                domain={domain}
+                siteId={siteId}
+                status={runStatus}
+                onClose={onClose}
+                onCancel={jobId ? handleCancel : undefined}
+            />
             <div className="flex-1 overflow-y-auto">
                 {!jobId ? (
                     <div className="p-4 space-y-4">
                         <div className="flex items-center justify-between">
                             <div>
                                 <Label>Full download</Label>
-                                <p className="text-xs text-muted-foreground">Re-download all files instead of incremental</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Re-download all files instead of incremental
+                                </p>
                             </div>
                             <Switch checked={fullDownload} onCheckedChange={setFullDownload} />
                         </div>
                         <div className="flex items-center justify-between">
                             <div>
                                 <Label>Skip git commit</Label>
-                                <p className="text-xs text-muted-foreground">Download files without committing to GitHub</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Download files without committing to GitHub
+                                </p>
                             </div>
                             <Switch checked={skipGit} onCheckedChange={setSkipGit} />
                         </div>
@@ -153,8 +170,11 @@ function RunContent({ siteId, domain, onClose }: RunModeProps) {
                 ) : (
                     <>
                         <RunInfo
-                            startedAt={startedAt} status={runStatus} trigger="manual"
-                            fullDownload={fullDownload} skipGit={skipGit}
+                            startedAt={startedAt}
+                            status={runStatus}
+                            trigger="manual"
+                            fullDownload={fullDownload}
+                            skipGit={skipGit}
                             {...stats}
                         />
                         <CollapsibleLog open={logOpen} onToggle={() => setLogOpen(!logOpen)}>
@@ -180,7 +200,13 @@ function LiveContent({ jobId, domain, siteId, onClose }: LiveModeProps) {
 
     return (
         <>
-            <ModalHeader domain={domain} siteId={siteId} status={runStatus} onClose={onClose} onCancel={handleCancel} />
+            <ModalHeader
+                domain={domain}
+                siteId={siteId}
+                status={runStatus}
+                onClose={onClose}
+                onCancel={handleCancel}
+            />
             <div className="flex-1 overflow-y-auto">
                 <RunInfo status={runStatus} trigger="manual" />
                 <CollapsibleLog open={logOpen} onToggle={() => setLogOpen(!logOpen)}>
@@ -193,11 +219,23 @@ function LiveContent({ jobId, domain, siteId, onClose }: LiveModeProps) {
 
 // ============ History Mode ============
 
-function HistoryContent({ backupId, domain, siteId, status: initialStatus, startedAt, fullDownload, skipGit, onClose, ...initialStats }: HistoryModeProps) {
+function HistoryContent({
+    backupId,
+    domain,
+    siteId,
+    status: initialStatus,
+    startedAt,
+    fullDownload,
+    skipGit,
+    onClose,
+    ...initialStats
+}: HistoryModeProps) {
     const [logLines, setLogLines] = useState<LogEntry[] | null>(null);
     const [status, setStatus] = useState<string>(initialStatus || 'loading');
     const [logOpen, setLogOpen] = useState(false);
-    const [info, setInfo] = useState<RunStats & { startedAt?: string | null; fullDownload?: boolean; skipGit?: boolean }>({
+    const [info, setInfo] = useState<
+        RunStats & { startedAt?: string | null; fullDownload?: boolean; skipGit?: boolean }
+    >({
         ...initialStats,
         startedAt,
         fullDownload,
@@ -206,11 +244,11 @@ function HistoryContent({ backupId, domain, siteId, status: initialStatus, start
 
     useEffect(() => {
         fetch(`/api/backups/${backupId}/log`)
-            .then(res => res.json())
-            .then(data => {
+            .then((res) => res.json())
+            .then((data) => {
                 setLogLines(parseStoredLog(data.log || ''));
                 setStatus(data.status);
-                setInfo(prev => ({
+                setInfo((prev) => ({
                     ...prev,
                     startedAt: data.startedAt ?? prev.startedAt,
                     durationMs: data.durationMs ?? prev.durationMs,
@@ -239,11 +277,16 @@ function HistoryContent({ backupId, domain, siteId, status: initialStatus, start
                             <span className="text-slate-500">Loading...</span>
                         ) : (
                             logLines.map((line, i) => (
-                                <div key={i} className={`py-0.5 ${
-                                    line.level === 'error' ? 'text-red-400'
-                                    : line.level === 'warn' ? 'text-yellow-400'
-                                    : 'text-slate-300'
-                                }`}>
+                                <div
+                                    key={i}
+                                    className={`py-0.5 ${
+                                        line.level === 'error'
+                                            ? 'text-red-400'
+                                            : line.level === 'warn'
+                                              ? 'text-yellow-400'
+                                              : 'text-slate-300'
+                                    }`}
+                                >
                                     {line.time && (
                                         <span className="text-slate-600 mr-2">
                                             {new Date(line.time).toLocaleTimeString()}
@@ -264,36 +307,59 @@ function HistoryContent({ backupId, domain, siteId, status: initialStatus, start
 function parseStoredLog(log: string): LogEntry[] {
     if (!log.trim()) return [{ time: '', level: 'info', msg: 'No log available' }];
 
-    return log.split('\n').filter(l => l.trim()).map(line => {
-        // Format: "2026-09-01T19:32:00.000Z [info] [domain] message"
-        const match = line.match(/^(\S+)\s+\[(\w+)]\s+(.+)$/);
-        if (match) {
-            return { time: match[1], level: match[2], msg: match[3] };
-        }
-        return { time: '', level: 'info', msg: line };
-    });
+    return log
+        .split('\n')
+        .filter((l) => l.trim())
+        .map((line) => {
+            // Format: "2026-09-01T19:32:00.000Z [info] [domain] message"
+            const match = line.match(/^(\S+)\s+\[(\w+)]\s+(.+)$/);
+            if (match) {
+                return { time: match[1], level: match[2], msg: match[3] };
+            }
+            return { time: '', level: 'info', msg: line };
+        });
 }
 
 // ============ Shared Components ============
 
-function ModalHeader({ domain, siteId, status, onClose, onCancel }: { domain: string; siteId?: number; status: string | null; onClose: () => void; onCancel?: () => void }) {
-    const badge = !status || status === 'loading'
-        ? null
-        : status === 'running'
-            ? <Badge variant="outline" className="animate-pulse border-primary text-primary">RUNNING</Badge>
-            : status === 'success' || status === 'complete'
-                ? <Badge variant="default">SUCCESS</Badge>
-                : status === 'cancelled'
-                    ? <Badge variant="secondary">CANCELLED</Badge>
-                    : status === 'error'
-                        ? <Badge variant="destructive">FAILED</Badge>
-                        : <Badge variant="secondary">{status.toUpperCase()}</Badge>;
+function ModalHeader({
+    domain,
+    siteId,
+    status,
+    onClose,
+    onCancel,
+}: {
+    domain: string;
+    siteId?: number;
+    status: string | null;
+    onClose: () => void;
+    onCancel?: () => void;
+}) {
+    const badge =
+        !status || status === 'loading' ? null : status === 'running' ? (
+            <Badge variant="outline" className="animate-pulse border-primary text-primary">
+                RUNNING
+            </Badge>
+        ) : status === 'success' || status === 'complete' ? (
+            <Badge variant="default">SUCCESS</Badge>
+        ) : status === 'cancelled' ? (
+            <Badge variant="secondary">CANCELLED</Badge>
+        ) : status === 'error' ? (
+            <Badge variant="destructive">FAILED</Badge>
+        ) : (
+            <Badge variant="secondary">{status.toUpperCase()}</Badge>
+        );
 
     return (
         <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
             <div className="flex items-center gap-3">
                 {siteId ? (
-                    <a href={`/sites/${siteId}`} className="font-medium text-primary hover:underline">{domain}</a>
+                    <a
+                        href={`/sites/${siteId}`}
+                        className="font-medium text-primary hover:underline"
+                    >
+                        {domain}
+                    </a>
                 ) : (
                     <span className="font-medium">{domain}</span>
                 )}
@@ -301,15 +367,30 @@ function ModalHeader({ domain, siteId, status, onClose, onCancel }: { domain: st
             </div>
             <div className="flex items-center gap-2">
                 {onCancel && status === 'running' && (
-                    <Button variant="destructive" size="sm" onClick={onCancel}>Cancel run</Button>
+                    <Button variant="destructive" size="sm" onClick={onCancel}>
+                        Cancel run
+                    </Button>
                 )}
-                <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+                <Button variant="ghost" size="sm" onClick={onClose}>
+                    Close
+                </Button>
             </div>
         </div>
     );
 }
 
-function RunInfo({ startedAt, status, trigger, durationMs, filesDownloaded, filesUnchanged, dumpSizeBytes, commitSha, fullDownload, skipGit }: RunStats & {
+function RunInfo({
+    startedAt,
+    status,
+    trigger,
+    durationMs,
+    filesDownloaded,
+    filesUnchanged,
+    dumpSizeBytes,
+    commitSha,
+    fullDownload,
+    skipGit,
+}: RunStats & {
     startedAt?: string | null;
     status?: string | null;
     trigger?: string;
@@ -341,7 +422,9 @@ function RunInfo({ startedAt, status, trigger, durationMs, filesDownloaded, file
             {filesDownloaded != null && (
                 <div>
                     <span className="text-muted-foreground text-xs">Files (updated / total)</span>
-                    <p className="font-medium text-xs">{filesDownloaded} / {filesDownloaded + (filesUnchanged ?? 0)}</p>
+                    <p className="font-medium text-xs">
+                        {filesDownloaded} / {filesDownloaded + (filesUnchanged ?? 0)}
+                    </p>
                 </div>
             )}
             {options.length > 0 && (
@@ -366,26 +449,44 @@ function RunInfo({ startedAt, status, trigger, durationMs, filesDownloaded, file
     );
 }
 
-function CollapsibleLog({ open, onToggle, children }: { open: boolean; onToggle: () => void; children: React.ReactNode }) {
+function CollapsibleLog({
+    open,
+    onToggle,
+    children,
+}: {
+    open: boolean;
+    onToggle: () => void;
+    children: React.ReactNode;
+}) {
     return (
         <div className="border-t border-border">
-            <button onClick={onToggle}
-                className="w-full px-4 py-2 text-xs text-muted-foreground hover:text-foreground flex items-center gap-2 transition-colors cursor-pointer">
-                <svg className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <button
+                onClick={onToggle}
+                className="w-full px-4 py-2 text-xs text-muted-foreground hover:text-foreground flex items-center gap-2 transition-colors cursor-pointer"
+            >
+                <svg
+                    className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
                 {open ? 'Hide log' : 'Show log'}
             </button>
-            {open && (
-                <div className="h-[300px]">
-                    {children}
-                </div>
-            )}
+            {open && <div className="h-[300px]">{children}</div>}
         </div>
     );
 }
 
-function LogStream({ jobId, onStatusChange }: { jobId: number; onStatusChange?: (status: string) => void }) {
+function LogStream({
+    jobId,
+    onStatusChange,
+}: {
+    jobId: number;
+    onStatusChange?: (status: string) => void;
+}) {
     const [lines, setLines] = useState<LogEntry[]>([]);
     const [status, setStatus] = useState('connecting');
     const bottomRef = useRef<HTMLDivElement>(null);
@@ -402,7 +503,10 @@ function LogStream({ jobId, onStatusChange }: { jobId: number; onStatusChange?: 
         source.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (data.type === 'log') {
-                setLines(prev => [...prev, { time: data.time, level: data.level, msg: data.msg }]);
+                setLines((prev) => [
+                    ...prev,
+                    { time: data.time, level: data.level, msg: data.msg },
+                ]);
             } else if (data.type === 'status') {
                 setStatus(data.status);
                 onStatusChangeRef.current?.(data.status);
@@ -429,11 +533,16 @@ function LogStream({ jobId, onStatusChange }: { jobId: number; onStatusChange?: 
                 <span className="text-slate-500">Connecting...</span>
             )}
             {lines.map((line, i) => (
-                <div key={i} className={`py-0.5 ${
-                    line.level === 'error' ? 'text-red-400'
-                    : line.level === 'warn' ? 'text-yellow-400'
-                    : 'text-slate-300'
-                }`}>
+                <div
+                    key={i}
+                    className={`py-0.5 ${
+                        line.level === 'error'
+                            ? 'text-red-400'
+                            : line.level === 'warn'
+                              ? 'text-yellow-400'
+                              : 'text-slate-300'
+                    }`}
+                >
                     <span className="text-slate-600 mr-2">
                         {new Date(line.time).toLocaleTimeString()}
                     </span>

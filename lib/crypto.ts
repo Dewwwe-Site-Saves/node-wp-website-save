@@ -13,7 +13,9 @@ const KEY_PATTERN = /^[0-9a-f]{64}$/i;
 function getKey(): Buffer {
     const hex = process.env.ENCRYPTION_KEY;
     if (!hex || !KEY_PATTERN.test(hex)) {
-        throw new Error('ENCRYPTION_KEY must be a 64-character hex string (generate it with: openssl rand -hex 32)');
+        throw new Error(
+            'ENCRYPTION_KEY must be a 64-character hex string (generate it with: openssl rand -hex 32)',
+        );
     }
     return Buffer.from(hex, 'hex');
 }
@@ -32,7 +34,7 @@ export function encrypt(plain: string): string {
     const cipher = createCipheriv(ALGORITHM, getKey(), iv);
     const data = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
-    return PREFIX + [iv, tag, data].map(part => part.toString('base64')).join(':');
+    return PREFIX + [iv, tag, data].map((part) => part.toString('base64')).join(':');
 }
 
 export function decrypt(payload: string): string {
@@ -43,7 +45,7 @@ export function decrypt(payload: string): string {
     if (parts.length !== 3) {
         throw new Error('Malformed encrypted payload');
     }
-    const [iv, tag, data] = parts.map(part => Buffer.from(part, 'base64'));
+    const [iv, tag, data] = parts.map((part) => Buffer.from(part, 'base64'));
     const decipher = createDecipheriv(ALGORITHM, getKey(), iv);
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');

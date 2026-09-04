@@ -39,7 +39,10 @@ export function getSite(id: number): Promise<SiteSummary | null> {
 
 export function createSite(input: SiteCreateInput): Promise<SiteSummary> {
     const { password, ...data } = input;
-    return prisma.site.create({ data: { ...data, passwordEnc: encrypt(password) }, select: siteSelect });
+    return prisma.site.create({
+        data: { ...data, passwordEnc: encrypt(password) },
+        select: siteSelect,
+    });
 }
 
 /** An undefined password keeps the stored one. */
@@ -101,7 +104,10 @@ export async function listBackups(query: BackupsQuery): Promise<BackupPage> {
 }
 
 export function getBackup(id: number): Promise<BackupWithDomain | null> {
-    return prisma.backup.findUnique({ where: { id }, include: { site: { select: { domain: true } } } });
+    return prisma.backup.findUnique({
+        where: { id },
+        include: { site: { select: { domain: true } } },
+    });
 }
 
 // ============ Settings ============
@@ -140,7 +146,15 @@ export async function getGithubConfig(): Promise<GithubConfig | null> {
 /** Null unless every SharePoint field is filled in. */
 export async function getSharePointConfig(): Promise<SharePointConfig | null> {
     const s = await getSettings();
-    if (!s.spTenantId || !s.spClientId || !s.spCertThumbprint || !s.spTenantName || !s.spSiteName || !s.spListName || !s.spDateField) {
+    if (
+        !s.spTenantId ||
+        !s.spClientId ||
+        !s.spCertThumbprint ||
+        !s.spTenantName ||
+        !s.spSiteName ||
+        !s.spListName ||
+        !s.spDateField
+    ) {
         return null;
     }
     return {

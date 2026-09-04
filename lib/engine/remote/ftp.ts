@@ -13,10 +13,17 @@ export function createFtpFactory(site: SiteConfig): RemoteClientFactory {
             const client = new Client(TIMEOUT_MS);
             client.prepareTransfer = enterPassiveModeIPv4;
             try {
-                await client.access({ host: site.host, port: site.port, user: site.username, password: site.password });
+                await client.access({
+                    host: site.host,
+                    port: site.port,
+                    user: site.username,
+                    password: site.password,
+                });
             } catch (error) {
                 client.close();
-                throw new Error(`FTP connection to ${site.host}:${site.port} failed: ${error instanceof Error ? error.message : String(error)}`);
+                throw new Error(
+                    `FTP connection to ${site.host}:${site.port} failed: ${error instanceof Error ? error.message : String(error)}`,
+                );
             }
             return new FtpClient(client);
         },

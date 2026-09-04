@@ -22,10 +22,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                     <h1 className="text-2xl font-bold">{site.domain}</h1>
-                    {site.enabled
-                        ? <Badge variant="default">Active</Badge>
-                        : <Badge variant="secondary">Disabled</Badge>
-                    }
+                    {site.enabled ? (
+                        <Badge variant="default">Active</Badge>
+                    ) : (
+                        <Badge variant="secondary">Disabled</Badge>
+                    )}
                 </div>
                 <div className="flex gap-2">
                     <RunBackupButton siteId={site.id} domain={site.domain} size="default" />
@@ -37,7 +38,12 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle className="text-base">Configuration</CardTitle>
-                        <Link href={`/sites/${site.id}/edit`} className="text-sm text-primary hover:underline">Edit</Link>
+                        <Link
+                            href={`/sites/${site.id}/edit`}
+                            className="text-sm text-primary hover:underline"
+                        >
+                            Edit
+                        </Link>
                     </CardHeader>
                     <CardContent>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-8 text-sm">
@@ -47,7 +53,9 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                             </div>
                             <div>
                                 <span className="text-muted-foreground">Host</span>
-                                <p className="font-medium">{site.host}:{site.port}</p>
+                                <p className="font-medium">
+                                    {site.host}:{site.port}
+                                </p>
                             </div>
                             <div>
                                 <span className="text-muted-foreground">Username</span>
@@ -63,7 +71,9 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                             </div>
                             <div>
                                 <span className="text-muted-foreground">Schedule</span>
-                                <p className="font-medium font-mono text-xs">{site.cronSchedule ?? 'Global'}</p>
+                                <p className="font-medium font-mono text-xs">
+                                    {site.cronSchedule ?? 'Global'}
+                                </p>
                             </div>
                             {site.spListItemId && (
                                 <div>
@@ -85,7 +95,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                                 No backups yet. Click &quot;Run Backup&quot; to start.
                             </div>
                         ) : (
-                            <BackupHistory backups={backups.items} showDomain={false} siteId={site.id} />
+                            <BackupHistory
+                                backups={backups.items}
+                                showDomain={false}
+                                siteId={site.id}
+                            />
                         )}
                     </CardContent>
                 </Card>

@@ -27,7 +27,9 @@ export function createSftpFactory(site: SiteConfig): RemoteClientFactory {
                     keepaliveCountMax: 3,
                 });
             } catch (error) {
-                throw new Error(`SFTP connection to ${site.host}:${site.port} failed: ${error instanceof Error ? error.message : String(error)}`);
+                throw new Error(
+                    `SFTP connection to ${site.host}:${site.port} failed: ${error instanceof Error ? error.message : String(error)}`,
+                );
             }
             return new SftpRemoteClient(client);
         },

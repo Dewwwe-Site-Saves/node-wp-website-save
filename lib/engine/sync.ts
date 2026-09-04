@@ -22,7 +22,11 @@ export function isBackupArtifact(name: string): boolean {
 /** No traversal, no absolute path: safe to join under the local root. */
 export function isSafePath(relPath: string): boolean {
     const normalized = path.normalize(relPath);
-    return normalized !== '..' && !normalized.startsWith(`..${path.sep}`) && !path.isAbsolute(normalized);
+    return (
+        normalized !== '..' &&
+        !normalized.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(normalized)
+    );
 }
 
 /**
@@ -43,7 +47,12 @@ export interface ScanResult {
  * Breadth-first listing of `rootDir`, one worker per client. Unlistable directories are
  * counted and skipped, so a partial scan is reported rather than thrown.
  */
-export async function scanRemote(clients: RemoteClient[], rootDir: string, log: Logger, signal?: AbortSignal): Promise<ScanResult> {
+export async function scanRemote(
+    clients: RemoteClient[],
+    rootDir: string,
+    log: Logger,
+    signal?: AbortSignal,
+): Promise<ScanResult> {
     const files: RemoteEntry[] = [];
     const pending: string[] = [rootDir];
     const waiters = new Set<() => void>();
@@ -61,7 +70,7 @@ export async function scanRemote(clients: RemoteClient[], rootDir: string, log: 
             const dir = pending.shift();
             if (dir === undefined) {
                 if (active === 0) return;
-                await new Promise<void>(resolve => waiters.add(resolve));
+                await new Promise<void>((resolve) => waiters.add(resolve));
                 continue;
             }
             active++;
@@ -71,9 +80,12 @@ export async function scanRemote(clients: RemoteClient[], rootDir: string, log: 
                     if (!isSafePath(relPath)) continue;
                     if (entry.type === 'dir') {
                         pending.push(entry.path);
-                    } else if (!(dir === rootDir && isBackupArtifact(path.posix.basename(entry.path)))) {
+                    } else if (!(
+                        dir === rootDir && isBackupArtifact(path.posix.basename(entry.path))
+                    )) {
                         files.push(entry);
-                        if (files.length % 500 === 0) log.info(`  ${files.length} files scanned...`);
+                        if (files.length % 500 === 0)
+                            log.info(`  ${files.length} files scanned...`);
                     }
                 }
             } catch (error) {
@@ -119,7 +131,8 @@ export function planSync(localRoot: string, files: RemoteEntry[], mode: SyncMode
     for (const entry of files) {
         const relPath = toRelativePath(entry.path);
         remoteSet.add(relPath);
-        if (mode === 'full' || needsDownload(path.join(localRoot, relPath), entry)) toDownload.push(entry);
+        if (mode === 'full' || needsDownload(path.join(localRoot, relPath), entry))
+            toDownload.push(entry);
     }
     return { toDownload, unchanged: files.length - toDownload.length, remoteSet };
 }
@@ -130,7 +143,13 @@ export interface DownloadStats {
 }
 
 /** Downloads with one worker per client. A failed file is logged and counted, not fatal. */
-export async function downloadFiles(clients: RemoteClient[], localRoot: string, entries: RemoteEntry[], log: Logger, signal?: AbortSignal): Promise<DownloadStats> {
+export async function downloadFiles(
+    clients: RemoteClient[],
+    localRoot: string,
+    entries: RemoteEntry[],
+    log: Logger,
+    signal?: AbortSignal,
+): Promise<DownloadStats> {
     let next = 0;
     let downloaded = 0;
     let failed = 0;
@@ -145,7 +164,8 @@ export async function downloadFiles(clients: RemoteClient[], localRoot: string, 
                 fs.mkdirSync(path.dirname(localPath), { recursive: true });
                 await client.download(entry.path, localPath);
                 downloaded++;
-                if (downloaded % 100 === 0) log.info(`  ${downloaded}/${entries.length} downloaded...`);
+                if (downloaded % 100 === 0)
+                    log.info(`  ${downloaded}/${entries.length} downloaded...`);
             } catch (error) {
                 failed++;
                 log.warn(`  Skipped ${toRelativePath(entry.path)}: ${errorMessage(error)}`);
@@ -194,14 +214,20 @@ export interface SyncOptions {
  * directory failed to list, orphan deletion is skipped so a flaky listing never deletes a
  * site from the backup. Full mode needs a complete listing and fails otherwise.
  */
-export async function syncFiles(factory: RemoteClientFactory, localRoot: string, rootDir: string, options: SyncOptions): Promise<SyncStats> {
+export async function syncFiles(
+    factory: RemoteClientFactory,
+    localRoot: string,
+    rootDir: string,
+    options: SyncOptions,
+): Promise<SyncStats> {
     const { mode, log, signal } = options;
     const clients = await openPool(factory);
     try {
         log.info(`Scanning remote files (${mode})...`);
         const { files, listErrors } = await scanRemote(clients, rootDir, log, signal);
         if (files.length === 0 && listErrors > 0) throw new Error('Could not list any remote file');
-        if (mode === 'full' && listErrors > 0) throw new Error(`Full download aborted: ${listErrors} directories could not be listed`);
+        if (mode === 'full' && listErrors > 0)
+            throw new Error(`Full download aborted: ${listErrors} directories could not be listed`);
         log.info(`  ${files.length} files found`);
         throwIfAborted(signal);
 
@@ -213,32 +239,51 @@ export async function syncFiles(factory: RemoteClientFactory, localRoot: string,
 
         const plan = planSync(localRoot, files, mode);
         log.info(`  ${plan.toDownload.length} files to download, ${plan.unchanged} unchanged`);
-        const { downloaded, failed } = await downloadFiles(clients, localRoot, plan.toDownload, log, signal);
+        const { downloaded, failed } = await downloadFiles(
+            clients,
+            localRoot,
+            plan.toDownload,
+            log,
+            signal,
+        );
         throwIfAborted(signal);
 
         if (mode === 'incremental') {
             if (listErrors > 0) {
-                log.warn(`  Orphan deletion skipped: ${listErrors} directories could not be listed`);
+                log.warn(
+                    `  Orphan deletion skipped: ${listErrors} directories could not be listed`,
+                );
             } else {
                 deleted = deleteOrphans(localRoot, plan.remoteSet);
             }
         }
 
-        const stats: SyncStats = { scanned: files.length, downloaded, failed, unchanged: plan.unchanged, deleted, listErrors };
-        log.info(`Sync complete: ${downloaded} downloaded, ${plan.unchanged} unchanged, ${deleted} deleted${failed ? `, ${failed} failed` : ''}`);
+        const stats: SyncStats = {
+            scanned: files.length,
+            downloaded,
+            failed,
+            unchanged: plan.unchanged,
+            deleted,
+            listErrors,
+        };
+        log.info(
+            `Sync complete: ${downloaded} downloaded, ${plan.unchanged} unchanged, ${deleted} deleted${failed ? `, ${failed} failed` : ''}`,
+        );
         return stats;
     } finally {
-        await Promise.allSettled(clients.map(client => client.close()));
+        await Promise.allSettled(clients.map((client) => client.close()));
     }
 }
 
 /** Opens `poolSize` connections; closes the ones opened if any fails. */
 async function openPool(factory: RemoteClientFactory): Promise<RemoteClient[]> {
-    const results = await Promise.allSettled(Array.from({ length: factory.poolSize }, () => factory.create()));
-    const clients = results.filter(r => r.status === 'fulfilled').map(r => r.value);
-    const failure = results.find(r => r.status === 'rejected');
+    const results = await Promise.allSettled(
+        Array.from({ length: factory.poolSize }, () => factory.create()),
+    );
+    const clients = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+    const failure = results.find((r) => r.status === 'rejected');
     if (failure) {
-        await Promise.allSettled(clients.map(client => client.close()));
+        await Promise.allSettled(clients.map((client) => client.close()));
         throw failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason));
     }
     return clients;

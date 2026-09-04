@@ -7,10 +7,7 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createClient(): PrismaClient {
     ensureDataDirs();
-    const adapter = new PrismaBetterSqlite3(
-        { url: dbUrl() },
-        { timestampFormat: 'iso8601' },
-    );
+    const adapter = new PrismaBetterSqlite3({ url: dbUrl() }, { timestampFormat: 'iso8601' });
     return new PrismaClient({ adapter });
 }
 

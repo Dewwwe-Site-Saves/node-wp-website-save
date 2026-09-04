@@ -12,7 +12,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
 
     const cancelled = backupQueue.cancelJob(id);
     if (!cancelled) {
-        return NextResponse.json({ error: 'Job cannot be cancelled (already finished)' }, { status: 400 });
+        return NextResponse.json(
+            { error: 'Job cannot be cancelled (already finished)' },
+            { status: 400 },
+        );
     }
 
     return NextResponse.json({ success: true, domain: job.domain, jobId: id });

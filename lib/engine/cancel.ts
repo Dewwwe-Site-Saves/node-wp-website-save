@@ -17,7 +17,10 @@ export function throwIfAborted(signal?: AbortSignal): void {
 
 /** True for our own cancellation error and for Node's AbortError (execFile, fetch). */
 export function isCancellation(error: unknown): boolean {
-    return error instanceof BackupCancelledError || (error instanceof Error && error.name === 'AbortError');
+    return (
+        error instanceof BackupCancelledError ||
+        (error instanceof Error && error.name === 'AbortError')
+    );
 }
 
 /** Rejects as soon as the signal fires, even if the wrapped promise never settles. */

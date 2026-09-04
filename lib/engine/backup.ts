@@ -8,7 +8,15 @@ import { createLogger } from './logger';
 import { createRemoteFactory, remoteRootDir, type RemoteClient } from './remote';
 import { updateSharePointItem } from './sharepoint';
 import { GITIGNORE_TEMPLATE, isBackupArtifact, syncFiles } from './sync';
-import type { BackupOptions, BackupOutcome, BackupResult, GithubConfig, Logger, SharePointConfig, SiteConfig } from './types';
+import type {
+    BackupOptions,
+    BackupOutcome,
+    BackupResult,
+    GithubConfig,
+    Logger,
+    SharePointConfig,
+    SiteConfig,
+} from './types';
 
 /** Workflow the v1 engine committed into every backup repo; Releases are now created by the app. */
 const LEGACY_WORKFLOW = path.join('.github', 'workflows', 'auto-tagged-release.yml');
@@ -18,7 +26,12 @@ const LEGACY_DUMP = /^db_.*\.sql$/;
  * One full backup of one site. Never throws: the outcome is in `result.status`, with
  * `errorMessage` and the complete log. Each step checks the abort signal.
  */
-export async function runBackup(site: SiteConfig, github: GithubConfig, sharepoint: SharePointConfig | null, options: BackupOptions): Promise<BackupResult> {
+export async function runBackup(
+    site: SiteConfig,
+    github: GithubConfig,
+    sharepoint: SharePointConfig | null,
+    options: BackupOptions,
+): Promise<BackupResult> {
     const { localRoot, signal } = options;
     const log = createLogger(`[${site.domain}]`, options.onLog);
     const startedAt = new Date();
@@ -44,7 +57,13 @@ export async function runBackup(site: SiteConfig, github: GithubConfig, sharepoi
         try {
             await removeRemoteLeftovers(client, rootDir, log);
             throwIfAborted(signal);
-            const dump = await dumpDatabase(site, client, path.join(localRoot, DUMP_FILE_NAME), log, signal);
+            const dump = await dumpDatabase(
+                site,
+                client,
+                path.join(localRoot, DUMP_FILE_NAME),
+                log,
+                signal,
+            );
             stats.dumpSizeBytes = dump.sizeBytes;
         } finally {
             await client.close().catch(() => undefined);
@@ -52,7 +71,11 @@ export async function runBackup(site: SiteConfig, github: GithubConfig, sharepoi
         throwIfAborted(signal);
 
         // 4. Files.
-        const sync = await syncFiles(factory, localRoot, rootDir, { mode: options.fullDownload ? 'full' : 'incremental', log, signal });
+        const sync = await syncFiles(factory, localRoot, rootDir, {
+            mode: options.fullDownload ? 'full' : 'incremental',
+            log,
+            signal,
+        });
         stats.filesDownloaded = sync.downloaded;
         stats.filesUnchanged = sync.unchanged;
         stats.filesDeleted = sync.deleted;
@@ -63,19 +86,30 @@ export async function runBackup(site: SiteConfig, github: GithubConfig, sharepoi
             log.info('Skipping commit and push');
         } else {
             const now = new Date();
-            const commit = await commitAndTag(gitCtx, `Backup ${site.domain} ${now.toISOString()}`, formatTag(now), log);
+            const commit = await commitAndTag(
+                gitCtx,
+                `Backup ${site.domain} ${now.toISOString()}`,
+                formatTag(now),
+                log,
+            );
             commitSha = commit.commitSha;
             tag = commit.tag;
             await push(gitCtx, tag, log);
             if (tag && commitSha) {
-                releaseUrl = await publishRelease(site, github, tag, {
-                    domain: site.domain,
-                    date: now,
-                    triggerType: options.triggerType,
-                    ...stats,
-                    durationMs: Date.now() - startedAt.getTime(),
-                    commitSha,
-                }, log);
+                releaseUrl = await publishRelease(
+                    site,
+                    github,
+                    tag,
+                    {
+                        domain: site.domain,
+                        date: now,
+                        triggerType: options.triggerType,
+                        ...stats,
+                        durationMs: Date.now() - startedAt.getTime(),
+                        commitSha,
+                    },
+                    log,
+                );
             }
         }
     } catch (error) {
@@ -147,9 +181,15 @@ function prepareLocalTree(localRoot: string, site: SiteConfig, log: Logger): voi
 }
 
 /** Dump, script or token file left on the web root by an interrupted run. */
-async function removeRemoteLeftovers(client: RemoteClient, rootDir: string, log: Logger): Promise<void> {
+async function removeRemoteLeftovers(
+    client: RemoteClient,
+    rootDir: string,
+    log: Logger,
+): Promise<void> {
     try {
-        const leftovers = (await client.list(rootDir)).filter(entry => entry.type === 'file' && isBackupArtifact(path.posix.basename(entry.path)));
+        const leftovers = (await client.list(rootDir)).filter(
+            (entry) => entry.type === 'file' && isBackupArtifact(path.posix.basename(entry.path)),
+        );
         for (const entry of leftovers) {
             log.info(`Removing leftover ${entry.path}`);
             await client.remove(entry.path);
@@ -160,7 +200,13 @@ async function removeRemoteLeftovers(client: RemoteClient, rootDir: string, log:
 }
 
 /** A failed Release is a warning: the snapshot is pushed, only its shortcut is missing. */
-async function publishRelease(site: SiteConfig, github: GithubConfig, tag: string, stats: Parameters<typeof formatReleaseBody>[0], log: Logger): Promise<string | null> {
+async function publishRelease(
+    site: SiteConfig,
+    github: GithubConfig,
+    tag: string,
+    stats: Parameters<typeof formatReleaseBody>[0],
+    log: Logger,
+): Promise<string | null> {
     try {
         const url = await createRelease(github.token, parseRepoUrl(site.repoUrl), tag, {
             name: `Backup ${stats.date.toISOString().slice(0, 19).replace('T', ' ')} UTC`,

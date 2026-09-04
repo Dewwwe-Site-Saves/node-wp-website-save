@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkToken, createRelease, formatReleaseBody, parseRepoUrl } from './github';
 
 function mockFetch(status: number, payload: unknown) {
-    const fn = vi.fn(async () => new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } }));
+    const fn = vi.fn(
+        async () =>
+            new Response(JSON.stringify(payload), {
+                status,
+                headers: { 'Content-Type': 'application/json' },
+            }),
+    );
     vi.stubGlobal('fetch', fn);
     return fn;
 }
@@ -13,8 +19,14 @@ afterEach(() => {
 
 describe('parseRepoUrl', () => {
     it('extracts owner and repo, with or without .git', () => {
-        expect(parseRepoUrl('https://github.com/Dewwwe-Site-Saves/dewwwe.git')).toEqual({ owner: 'Dewwwe-Site-Saves', repo: 'dewwwe' });
-        expect(parseRepoUrl('https://github.com/owner/my.repo')).toEqual({ owner: 'owner', repo: 'my.repo' });
+        expect(parseRepoUrl('https://github.com/Dewwwe-Site-Saves/dewwwe.git')).toEqual({
+            owner: 'Dewwwe-Site-Saves',
+            repo: 'dewwwe',
+        });
+        expect(parseRepoUrl('https://github.com/owner/my.repo')).toEqual({
+            owner: 'owner',
+            repo: 'my.repo',
+        });
     });
 
     it('rejects anything else', () => {
@@ -25,20 +37,31 @@ describe('parseRepoUrl', () => {
 
 describe('createRelease', () => {
     it('posts to the releases endpoint with the token in the header and returns the URL', async () => {
-        const fetchMock = mockFetch(201, { html_url: 'https://github.com/o/r/releases/tag/20260903-210509' });
-        const url = await createRelease('tok', { owner: 'o', repo: 'r' }, '20260903-210509', { name: 'Backup', body: 'notes' });
+        const fetchMock = mockFetch(201, {
+            html_url: 'https://github.com/o/r/releases/tag/20260903-210509',
+        });
+        const url = await createRelease('tok', { owner: 'o', repo: 'r' }, '20260903-210509', {
+            name: 'Backup',
+            body: 'notes',
+        });
         expect(url).toBe('https://github.com/o/r/releases/tag/20260903-210509');
 
         const [input, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
         expect(input).toBe('https://api.github.com/repos/o/r/releases');
         expect(init.method).toBe('POST');
         expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
-        expect(JSON.parse(init.body as string)).toMatchObject({ tag_name: '20260903-210509', name: 'Backup', body: 'notes' });
+        expect(JSON.parse(init.body as string)).toMatchObject({
+            tag_name: '20260903-210509',
+            name: 'Backup',
+            body: 'notes',
+        });
     });
 
     it('surfaces the API message on failure, never the token', async () => {
         mockFetch(422, { message: 'Validation Failed' });
-        await expect(createRelease('tok', { owner: 'o', repo: 'r' }, 'v', { name: 'n', body: 'b' })).rejects.toMatchObject({
+        await expect(
+            createRelease('tok', { owner: 'o', repo: 'r' }, 'v', { name: 'n', body: 'b' }),
+        ).rejects.toMatchObject({
             name: 'GithubApiError',
             status: 422,
             message: 'GitHub API 422 on POST /repos/o/r/releases: Validation Failed',

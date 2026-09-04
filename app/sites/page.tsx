@@ -14,7 +14,9 @@ export default async function SitesPage() {
             <div className="flex items-center justify-between mb-6">
                 <div>
                     <h1 className="text-2xl font-bold">Sites</h1>
-                    <p className="text-sm text-muted-foreground mt-1">Manage your WordPress sites</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                        Manage your WordPress sites
+                    </p>
                 </div>
                 <Link href="/sites/new">
                     <Button>Add Site</Button>
@@ -26,7 +28,9 @@ export default async function SitesPage() {
                     {sites.length === 0 ? (
                         <div className="text-center py-16 text-muted-foreground">
                             <p>No sites configured yet.</p>
-                            <Link href="/sites/new" className="text-primary hover:underline">Add your first site</Link>
+                            <Link href="/sites/new" className="text-primary hover:underline">
+                                Add your first site
+                            </Link>
                         </div>
                     ) : (
                         <SitesTable sites={sites} />

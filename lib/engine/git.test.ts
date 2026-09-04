@@ -18,7 +18,8 @@ function bareGit(...args: string[]): string {
 
 beforeAll(() => {
     // Isolate from the developer's global config (default branch, credential helpers).
-    for (const key of ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM']) savedEnv[key] = process.env[key];
+    for (const key of ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM'])
+        savedEnv[key] = process.env[key];
     process.env.GIT_CONFIG_GLOBAL = '/dev/null';
     process.env.GIT_CONFIG_NOSYSTEM = '1';
 });
@@ -91,12 +92,27 @@ describe('ensureRepo / commitAndTag / push', () => {
 
         // Simulate an interrupted run and a stale remote URL.
         fs.writeFileSync(path.join(ctx.cwd, 'db.sql'), 'dirty');
-        execFileSync('git', ['-C', ctx.cwd, 'remote', 'set-url', 'origin', 'https://x-access-token:secret@example.com/r.git']);
+        execFileSync('git', [
+            '-C',
+            ctx.cwd,
+            'remote',
+            'set-url',
+            'origin',
+            'https://x-access-token:secret@example.com/r.git',
+        ]);
 
         await ensureRepo(ctx, bareRepo, log);
         expect(fs.readFileSync(path.join(ctx.cwd, 'db.sql'), 'utf8')).toBe('v1');
-        expect(execFileSync('git', ['-C', ctx.cwd, 'remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim()).toBe(bareRepo);
-        expect(execFileSync('git', ['-C', ctx.cwd, 'branch', '--show-current'], { encoding: 'utf8' }).trim()).toBe('main');
+        expect(
+            execFileSync('git', ['-C', ctx.cwd, 'remote', 'get-url', 'origin'], {
+                encoding: 'utf8',
+            }).trim(),
+        ).toBe(bareRepo);
+        expect(
+            execFileSync('git', ['-C', ctx.cwd, 'branch', '--show-current'], {
+                encoding: 'utf8',
+            }).trim(),
+        ).toBe('main');
     });
 
     it('re-clones when the folder exists without .git', async () => {
@@ -109,8 +125,12 @@ describe('ensureRepo / commitAndTag / push', () => {
 
     it('reports a failing command without the command line or the token', async () => {
         ctx.token = 'ghp_secret_token';
-        await expect(ensureRepo(ctx, path.join(workDir, 'missing.git'), log)).rejects.toMatchObject({ name: 'GitError' });
-        await expect(ensureRepo(ctx, path.join(workDir, 'missing.git'), log)).rejects.not.toThrow(/ghp_secret_token|credential\.helper/);
+        await expect(ensureRepo(ctx, path.join(workDir, 'missing.git'), log)).rejects.toMatchObject(
+            { name: 'GitError' },
+        );
+        await expect(ensureRepo(ctx, path.join(workDir, 'missing.git'), log)).rejects.not.toThrow(
+            /ghp_secret_token|credential\.helper/,
+        );
     });
 
     it('returns null for headSha on an unborn branch', async () => {

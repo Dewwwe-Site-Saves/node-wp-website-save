@@ -5,7 +5,15 @@ import { LogModal } from '@/components/LogModal';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-export function RunBackupButton({ siteId, domain, size = 'sm' }: { siteId: number; domain?: string; size?: 'sm' | 'default' }) {
+export function RunBackupButton({
+    siteId,
+    domain,
+    size = 'sm',
+}: {
+    siteId: number;
+    domain?: string;
+    size?: 'sm' | 'default';
+}) {
     const [showModal, setShowModal] = useState(false);
     const router = useRouter();
 
@@ -15,8 +23,15 @@ export function RunBackupButton({ siteId, domain, size = 'sm' }: { siteId: numbe
                 Run Backup
             </Button>
             {showModal && (
-                <LogModal mode="run" siteId={siteId} domain={domain || `Site #${siteId}`}
-                    onClose={() => { setShowModal(false); router.refresh(); }} />
+                <LogModal
+                    mode="run"
+                    siteId={siteId}
+                    domain={domain || `Site #${siteId}`}
+                    onClose={() => {
+                        setShowModal(false);
+                        router.refresh();
+                    }}
+                />
             )}
         </>
     );
@@ -38,7 +53,9 @@ export function RunAllButton() {
                     setLoading(false);
                     router.refresh();
                 }
-            } catch { /* ignore */ }
+            } catch {
+                /* ignore */
+            }
         }, 3000);
         return () => clearInterval(interval);
     }, [isRunning]);

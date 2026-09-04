@@ -5,7 +5,12 @@ import type { SiteSummary } from '@/lib/db';
 import { RunBackupButton } from '@/components/BackupActions';
 import { Badge } from '@/components/ui/badge';
 import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
 } from '@/components/ui/table';
 
 export function SitesTable({ sites }: { sites: SiteSummary[] }) {
@@ -26,23 +31,33 @@ export function SitesTable({ sites }: { sites: SiteSummary[] }) {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {sites.map(site => (
-                        <TableRow key={site.id} className="cursor-pointer hover:bg-muted/50"
-                            onClick={() => router.push(`/sites/${site.id}`)}>
+                    {sites.map((site) => (
+                        <TableRow
+                            key={site.id}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => router.push(`/sites/${site.id}`)}
+                        >
                             <TableCell className="font-medium">{site.domain}</TableCell>
-                            <TableCell className="hidden sm:table-cell text-muted-foreground">{site.host}</TableCell>
+                            <TableCell className="hidden sm:table-cell text-muted-foreground">
+                                {site.host}
+                            </TableCell>
                             <TableCell className="hidden lg:table-cell">
                                 <Badge variant="outline">{site.protocol.toUpperCase()}</Badge>
                             </TableCell>
-                            <TableCell className="hidden lg:table-cell text-muted-foreground">{site.repo}</TableCell>
-                            <TableCell className="hidden sm:table-cell text-muted-foreground font-mono text-xs">{site.cronSchedule ?? 'Global'}</TableCell>
-                            <TableCell>
-                                {site.enabled
-                                    ? <Badge variant="default">Active</Badge>
-                                    : <Badge variant="secondary">Disabled</Badge>
-                                }
+                            <TableCell className="hidden lg:table-cell text-muted-foreground">
+                                {site.repo}
                             </TableCell>
-                            <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                            <TableCell className="hidden sm:table-cell text-muted-foreground font-mono text-xs">
+                                {site.cronSchedule ?? 'Global'}
+                            </TableCell>
+                            <TableCell>
+                                {site.enabled ? (
+                                    <Badge variant="default">Active</Badge>
+                                ) : (
+                                    <Badge variant="secondary">Disabled</Badge>
+                                )}
+                            </TableCell>
+                            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                                 <RunBackupButton siteId={site.id} domain={site.domain} />
                             </TableCell>
                         </TableRow>

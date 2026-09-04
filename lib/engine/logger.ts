@@ -22,9 +22,9 @@ export function createLogger(prefix: string, onLog?: (entry: LogEntry) => void):
 
     return {
         entries,
-        info: msg => write('info', msg),
-        warn: msg => write('warn', msg),
-        error: msg => write('error', msg),
-        text: () => entries.map(e => `${e.time} [${e.level}] ${e.msg}`).join('\n'),
+        info: (msg) => write('info', msg),
+        warn: (msg) => write('warn', msg),
+        error: (msg) => write('error', msg),
+        text: () => entries.map((e) => `${e.time} [${e.level}] ${e.msg}`).join('\n'),
     };
 }

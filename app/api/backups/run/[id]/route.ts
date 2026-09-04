@@ -9,7 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const site = id ? await getSite(id) : null;
     if (!site) return jsonError(404, 'Site not found');
 
-    if (backupQueue.getRunningJobs().some(j => j.siteId === site.id)) {
+    if (backupQueue.getRunningJobs().some((j) => j.siteId === site.id)) {
         return jsonError(409, 'Backup already running for this site');
     }
 
@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // Wait for the job to start and get its backupId (with timeout)
     const backupId = await Promise.race([
         job.started,
-        new Promise<null>(resolve => setTimeout(() => resolve(null), 5000)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
     ]);
 
     return NextResponse.json({
