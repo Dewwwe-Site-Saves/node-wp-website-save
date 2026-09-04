@@ -1,3 +1,4 @@
+import path from 'node:path';
 import SftpClient from 'ssh2-sftp-client';
 import type { SiteConfig } from '../types';
 import type { RemoteClient, RemoteClientFactory, RemoteEntry } from './client';
@@ -31,16 +32,26 @@ export function createSftpFactory(site: SiteConfig): RemoteClientFactory {
                     `SFTP connection to ${site.host}:${site.port} failed: ${error instanceof Error ? error.message : String(error)}`,
                 );
             }
-            return new SftpRemoteClient(client);
+            return new SftpRemoteClient(client, await client.realPath('.'));
         },
     };
 }
 
+/**
+ * Engine paths are absolute under the login directory (`/www/...`), the FTP convention. An SSH login lands in a real home, so every path is resolved under it here. A chrooted SFTP account has `/` as home and is unaffected.
+ */
 class SftpRemoteClient implements RemoteClient {
-    constructor(private readonly client: SftpClient) {}
+    constructor(
+        private readonly client: SftpClient,
+        private readonly home: string,
+    ) {}
+
+    private real(enginePath: string): string {
+        return path.posix.join(this.home, enginePath);
+    }
 
     async list(dir: string): Promise<RemoteEntry[]> {
-        const items = await this.client.list(dir);
+        const items = await this.client.list(this.real(dir));
         const entries: RemoteEntry[] = [];
         for (const item of items) {
             // 'l' (symlink) is downloaded like a file: fastGet follows the link.
@@ -57,15 +68,15 @@ class SftpRemoteClient implements RemoteClient {
     }
 
     async download(remotePath: string, localPath: string): Promise<void> {
-        await this.client.fastGet(remotePath, localPath);
+        await this.client.fastGet(this.real(remotePath), localPath);
     }
 
     async upload(content: Buffer, remotePath: string): Promise<void> {
-        await this.client.put(content, remotePath);
+        await this.client.put(content, this.real(remotePath));
     }
 
     async remove(remotePath: string): Promise<void> {
-        await this.client.delete(remotePath);
+        await this.client.delete(this.real(remotePath));
     }
 
     async close(): Promise<void> {

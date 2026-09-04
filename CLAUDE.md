@@ -16,7 +16,7 @@ Working branch is `v2`. [PLAN.md](./PLAN.md) is the source of truth for scope an
 
 - `backup.ts` — `runBackup(site, github, sharepoint, options)` is the single entry point. It never throws: the outcome is `result.status` (`success` | `error` | `cancelled`) plus `errorMessage` and the full log. The queue copies the result as-is.
 - `git.ts` — `execFile` with array arguments, identity and credentials passed per invocation with `-c`. The token reaches git through an inline `credential.helper` reading `GIT_BACKUP_TOKEN` from the environment (no `GIT_ASKPASS` file), never through a URL. Errors are built from stderr only.
-- `remote/` — `RemoteClient` interface, FTP (basic-ftp, 5 connections) and SFTP (ssh2-sftp-client, 3 connections, one worker per connection). Remote paths are absolute; the local tree keeps the web root folder (`www/...`).
+- `remote/` — `RemoteClient` interface, FTP (basic-ftp, 5 connections) and SFTP (ssh2-sftp-client, 3 connections, one worker per connection). Engine paths are absolute under the login directory (`/www/...`); the SFTP client resolves them under `realPath('.')` because an SSH login lands in a real home. The local tree keeps the web root folder (`www/...`).
 - `sync.ts` — scan, plan, download, prune. Orphan deletion is skipped when any directory failed to list; full mode refuses a partial listing.
 - `dump.ts` — token hash + `helpers/backup-wp.php` uploaded from memory, HTTPS trigger with `redirect: 'manual'`, dump downloaded to `<clone>/db.sql` and validated, remote artifacts removed in `finally`.
 - `sharepoint.ts` — PnP v4, `SPDefault()` + `MSAL()` behaviors, certificate under `DATA_DIR/sp-certificates/key.pem`. Failure is a warning.
