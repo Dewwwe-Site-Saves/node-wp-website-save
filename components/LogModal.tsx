@@ -407,7 +407,8 @@ function LogStream({ jobId, onStatusChange }: { jobId: number; onStatusChange?: 
                 setStatus(data.status);
                 onStatusChangeRef.current?.(data.status);
             } else if (data.type === 'done') {
-                const finalStatus = data.status === 'complete' ? 'success' : 'error';
+                // The queue still says "complete" for a successful run; every other status is already the stored one.
+                const finalStatus = data.status === 'complete' ? 'success' : data.status;
                 setStatus(finalStatus);
                 onStatusChangeRef.current?.(finalStatus);
                 source.close();

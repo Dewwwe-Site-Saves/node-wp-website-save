@@ -311,6 +311,10 @@ Steps, each a function, each checking `signal`:
 - `crypto.test.ts`: round trip, wrong key, malformed prefix.
 - `validation.test.ts`: site schema (domain, repo, repoUrl, cron).
 
+### Real-site checks still pending (as of 2026-09-04)
+
+Verified on dewwwe.com (FTP): skip-git run, full run with commit, tag, push and Release, cancel during the scan. Not verified yet, to do before the Docker rollout of Phase 5: full download mode, an SFTP site (never proven to work in v1 either), the SharePoint update with PnP v4 (certificate to move under `DATA_DIR/sp-certificates/`), the six other sites once each, and a run with nothing changed ("Nothing to commit" path).
+
 ## Phase 3 — Jobs: queue, scheduler, boot
 
 ### `jobs/queue.ts`
