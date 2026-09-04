@@ -45,6 +45,8 @@ Run `typecheck` and `test` yourself after changing engine or lib code. Anything 
 
 There is no ESLint here on purpose: `eslint-config-next` pulls in typescript-eslint, which refuses to load under TypeScript 7 ([typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940)) — the guard is in `@typescript-eslint/parser` too, so no TS parser is available at all. Prettier handles formatting and `tsc --strict` covers most of what the rules would catch. Don't re-add ESLint until that issue lands.
 
+VS Code uses its bundled TypeScript for IntelliSense: TypeScript 7 ships no `tsserver.js`, so `js/ts.tsdk.path` must stay unset in `.vscode/settings.json`. `npm run typecheck` is the reference.
+
 Spell checking: Code Spell Checker reads `.vscode/cspell.json`. Add project vocabulary there rather than sprinkling `cspell:ignore` comments.
 
 ## Conventions
