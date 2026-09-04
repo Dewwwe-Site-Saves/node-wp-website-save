@@ -4,6 +4,10 @@ node_modules
 # VS Code: only the shared workspace settings are versioned
 .vscode/*
 !.vscode/settings.json
+!.vscode/extensions.json
+
+# Claude Code: project settings are shared, local overrides are not
+.claude/settings.local.json
 
 # Next.js / TypeScript
 .next

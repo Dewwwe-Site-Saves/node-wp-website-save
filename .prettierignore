@@ -1,0 +1,12 @@
+.next
+node_modules
+lib/generated
+data
+files
+sp-certificates
+prisma/migrations
+package-lock.json
+tsconfig.tsbuildinfo
+
+# Prose stays hand-written: README and PLAN have a deliberate structure
+*.md

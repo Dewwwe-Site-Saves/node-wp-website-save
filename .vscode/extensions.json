@@ -1,0 +1,18 @@
+{
+    "recommendations": [
+        "anthropic.claude-code",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "prisma.prisma",
+        "vitest.explorer",
+        "usernamehw.errorlens",
+        "alexcvzz.vscode-sqlite",
+        "ms-azuretools.vscode-containers"
+    ],
+    "unwantedRecommendations": [
+        "bmewburn.vscode-intelephense-client",
+        "devsense.phptools-vscode",
+        "batisteo.vscode-django",
+        "keesschollaart.vscode-home-assistant"
+    ]
+}
