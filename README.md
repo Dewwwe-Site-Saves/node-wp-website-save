@@ -148,6 +148,8 @@ If something goes wrong with a site, delete `$DATA_DIR/files/your-site` and re-r
 - [ ] WP-CLI support for sites with SSH access (`wp db export`)
 - [ ] Prestashop / Drupal support (CMS-specific dump scripts)
 - [ ] Diff viewer for changed files between backups
+- [ ] File explorer to browse and download files from a given backup
+- [ ] Structured logs (level + step filters, per-step timeline with durations)
 - [ ] Backup size tracking and storage alerts
 - [ ] Webhook triggers (start backup from external systems)
 - [ ] Backup integrity verification (checksum after download)

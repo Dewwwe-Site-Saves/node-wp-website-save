@@ -405,6 +405,7 @@ Every handler: `await params`, `parseInt` guarded, body parsed with zod, errors 
 - History page: pagination and site/status filters backed by `/api/backups`.
 - Settings page: GitHub (owner, email, token with "Test" button), SharePoint, schedule,
   concurrency, retention. Secrets masked with a reveal-on-edit field.
+- Commit identity configurable globally: new `Settings.githubName` column (migration), "Commit author" fields (name + email) in the GitHub section of Settings. `GithubConfig` gains `name`, `git.ts` drops the hard-coded `AUTHOR_NAME` constant and uses it, falling back to `WP Backup Manager` when the setting is empty. Per-site override is listed under Later.
 - Site form: "Use global schedule" maps to `cronSchedule = null`; "Test connection" button.
 - Setup and login pages.
 - Props typed from Prisma types (`Site`, `Backup`); no `any`.
@@ -444,6 +445,7 @@ Every handler: `await params`, `parseInt` guarded, body parsed with zod, errors 
   token scheme, automatic pre-restore backup.
 - **Multi-user**: users page in Settings, invitations, `viewer` role enforced through
   `requireRole`.
+- **Per-site commit identity**: optional `Site.commitName` / `Site.commitEmail` overriding the global identity from Settings (useful when a client's backup repo must show the client's own author). Site form gets an "Override commit author" toggle; `lib/db.ts` merges site → settings → default when building the `GithubConfig`.
 - **Repo auto-creation** from the site form through the GitHub API (private repo, README).
 - **API tokens** for external triggers (webhooks, curl) without a browser session.
 - **SSH remotes** as an alternative to the HTTPS token (app-generated key shown in Settings).
@@ -451,4 +453,6 @@ Every handler: `await params`, `parseInt` guarded, body parsed with zod, errors 
 - **WP-CLI dump** for sites with SSH access.
 - **Prestashop / Drupal** dump scripts, project rename to `site-backup-manager`.
 - **Diff viewer** between two backups, size tracking and storage alerts.
+- **File explorer**: browse the tree of a given backup (Release/tag) from the UI, view or download a single file, entry point for a per-file restore. Read from the local clone via `git ls-tree` / `git show`, no extra storage.
+- **Structured logs**: log lines carry a level and a step (scan, download, dump, commit, push, sharepoint), the live log modal and the backup detail page get level filters and a per-step timeline with durations. Inspired by the DBackup dashboard.
 - **Integration tests** against a local FTP/SFTP container.
