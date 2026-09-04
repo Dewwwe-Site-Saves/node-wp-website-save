@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { jsonError, parseBody } from '@/lib/api';
 import { getSite } from '@/lib/db';
-import { backupQueue } from '@/lib/queue';
+import { backupQueue } from '@/lib/jobs/queue';
 import { parseId, runBackupSchema } from '@/lib/validation';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {

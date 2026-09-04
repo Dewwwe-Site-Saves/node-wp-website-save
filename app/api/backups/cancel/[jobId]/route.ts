@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { backupQueue } from '@/lib/queue';
+import { backupQueue } from '@/lib/jobs/queue';
 
 export async function POST(request: Request, { params }: { params: Promise<{ jobId: string }> }) {
     const { jobId } = await params;

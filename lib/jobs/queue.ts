@@ -1,10 +1,10 @@
 import { EventEmitter } from 'node:events';
 import path from 'node:path';
-import { getGithubConfig, getSharePointConfig, getSite, getSiteConfig } from './db';
-import { runBackup } from './engine/backup';
-import type { LogEntry, TriggerType } from './engine/types';
-import { filesDir } from './paths';
-import { prisma } from './prisma';
+import { getGithubConfig, getSharePointConfig, getSite, getSiteConfig } from '../db';
+import { runBackup } from '../engine/backup';
+import type { LogEntry, TriggerType } from '../engine/types';
+import { filesDir } from '../paths';
+import { prisma } from '../prisma';
 
 /**
  * In-process queue driving the engine. Kept close to the v1 shape (job ids, in-memory

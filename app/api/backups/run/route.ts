@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { jsonError } from '@/lib/api';
 import { listSites } from '@/lib/db';
-import { backupQueue } from '@/lib/queue';
+import { backupQueue } from '@/lib/jobs/queue';
 
 export async function POST() {
     const sites = (await listSites()).filter((site) => site.enabled);

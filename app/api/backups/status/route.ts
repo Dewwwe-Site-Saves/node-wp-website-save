@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { backupQueue } from '@/lib/queue';
+import { backupQueue } from '@/lib/jobs/queue';
 
 export const dynamic = 'force-dynamic';
 
