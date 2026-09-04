@@ -313,7 +313,7 @@ Steps, each a function, each checking `signal`:
 
 ### Real-site checks still pending (as of 2026-09-04)
 
-Verified on dewwwe.com (FTP): skip-git run, full run with commit, tag, push and Release, cancel during the scan. Not verified yet, to do before the Docker rollout of Phase 5: full download mode, an SFTP site (never proven to work in v1 either), the SharePoint update with PnP v4 (certificate to move under `DATA_DIR/sp-certificates/`), the six other sites once each, and a run with nothing changed ("Nothing to commit" path).
+Verified on dewwwe.com (FTP): skip-git run, full run with commit, tag, push and Release, cancel during the scan, full download mode, the SharePoint update with PnP v4 (the stored thumbprint had to be updated to the certificate registered in Entra). Verified on lacommanderiedestempliers.com (SFTP, 14 477 files in 4 min 40 s with 3 sessions, slower than FTP but acceptable). The queue, the scheduler and the boot sweep were exercised in `next dev` (pending, cancel of a pending and of a running backup, concurrency 1, hot reload during a run). Not verified yet, to do before the Docker rollout of Phase 5: the five other sites once each, a scheduled run firing on its own, and a run with nothing changed ("Nothing to commit" path).
 
 ## Phase 3 — Jobs: queue, scheduler, boot
 
