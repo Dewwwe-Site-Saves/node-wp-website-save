@@ -1,7 +1,8 @@
 # Pinned on purpose: a moving tag such as node:24-alpine swaps the Alpine release underneath and breaks native modules. Bump it explicitly.
 ARG NODE_IMAGE=node:24.13.1-alpine3.23
 
-# ---- builder: full install, Prisma client, Next.js standalone build ----
+# ---- builder: one install, Prisma client, Next.js standalone build, then pruned to the runtime node_modules ----
+# A single stage on purpose: two independent stages would run their `npm ci` and the build in parallel and double the peak memory of the build.
 FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 # Only used when no better-sqlite3 prebuild matches the platform.
@@ -13,18 +14,11 @@ COPY prisma.config.ts ./
 COPY lib/paths.ts ./lib/paths.ts
 RUN npm ci
 COPY . .
+# No --max-old-space-size here: Next strips it from the worker that runs the build, it would cap nothing.
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
-
-# ---- prod-deps: runtime node_modules, Prisma CLI and tsx included (see package.json) ----
-FROM ${NODE_IMAGE} AS prod-deps
-WORKDIR /app
-RUN apk add --no-cache python3 make g++
-COPY package.json package-lock.json ./
-COPY prisma ./prisma
-COPY prisma.config.ts ./
-COPY lib/paths.ts ./lib/paths.ts
-RUN npm ci --omit=dev && npm cache clean --force
+# Runtime node_modules, Prisma CLI and tsx included (see package.json): drop the dev packages in place, no second install.
+RUN npm prune --omit=dev && npm cache clean --force
 
 # ---- runner ----
 FROM ${NODE_IMAGE} AS runner
@@ -40,7 +34,7 @@ ENV NODE_ENV=production \
     PGID=1000
 # Standalone server with its traced node_modules, then the full runtime node_modules on top (a superset: Prisma CLI, tsx, generated client).
 COPY --from=builder /app/.next/standalone ./
-COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next/static ./.next/static
 # Migrations, CLI config (resolves DATA_DIR through lib/paths.ts), version shown by the entrypoint.
 COPY prisma ./prisma
@@ -50,7 +44,7 @@ COPY helpers ./helpers
 # Operator scripts (import-config, reset-password) run through tsx and import lib/, including the generated client.
 COPY scripts ./scripts
 COPY lib ./lib
-COPY --from=prod-deps /app/lib/generated ./lib/generated
+COPY --from=builder /app/lib/generated ./lib/generated
 COPY docker-entrypoint.sh ./
 RUN chmod +x ./docker-entrypoint.sh && mkdir -p /data
 

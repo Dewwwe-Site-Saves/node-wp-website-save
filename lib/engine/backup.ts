@@ -164,8 +164,14 @@ function prepareLocalTree(localRoot: string, site: SiteConfig, log: Logger): voi
     if (fs.existsSync(workflow)) {
         log.info('Removing legacy release workflow');
         fs.rmSync(workflow);
+        // turbopackIgnore: `path.dirname` of a runtime path reads as "anywhere" to the build-time tracer, which then traces the whole project.
         for (const dir of [path.dirname(workflow), path.join(localRoot, '.github')]) {
-            if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+            if (
+                fs.existsSync(/*turbopackIgnore: true*/ dir) &&
+                fs.readdirSync(/*turbopackIgnore: true*/ dir).length === 0
+            ) {
+                fs.rmdirSync(dir);
+            }
         }
     }
 

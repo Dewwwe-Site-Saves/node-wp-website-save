@@ -101,7 +101,8 @@ export function formatTag(date: Date): string {
  * transient fetch failure throws and keeps the clone; only an unreadable `.git` is wiped.
  */
 export async function ensureRepo(ctx: GitContext, repoUrl: string, log: Logger): Promise<void> {
-    const gitDir = path.join(ctx.cwd, '.git');
+    // turbopackIgnore: the build-time tracer would otherwise glob every `.git` folder of the project.
+    const gitDir = path.join(/*turbopackIgnore: true*/ ctx.cwd, '.git');
     if (!fs.existsSync(gitDir)) {
         if (fs.existsSync(ctx.cwd)) {
             log.warn(`${ctx.cwd} exists without a .git folder, replacing it with a fresh clone`);

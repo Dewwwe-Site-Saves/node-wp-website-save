@@ -10,19 +10,24 @@ import path from 'node:path';
  * Exposed as functions, not constants: the value is read when called, so callers that load
  * a .env file at startup (Prisma CLI, tsx scripts) get the right directory regardless of
  * import order.
+ *
+ * Every path call below carries a turbopackIgnore comment. The build-time tracer of `next build` turns `path.join(process.cwd(), 'data')` into a reference to the whole data directory and `path.join(x, 'files')` into a glob for every folder of that name in the project, then copies the matches into the standalone output: with the site clones inside the project that meant 100k files, 10 GB of RAM and a copy of every dump. The comment opts each call out; `next.config.js` excludes the data directory from the trace as a safety net.
  */
 export function dataDir(): string {
-    return path.resolve(process.env.DATA_DIR ?? path.join(process.cwd(), 'data'));
+    return path.resolve(
+        /*turbopackIgnore: true*/ process.env.DATA_DIR ??
+            path.join(/*turbopackIgnore: true*/ process.cwd(), 'data'),
+    );
 }
 
 /** Local git clones of the backup repositories, one folder per site (`<repo>`). */
 export function filesDir(): string {
-    return path.join(dataDir(), 'files');
+    return path.join(/*turbopackIgnore: true*/ dataDir(), 'files');
 }
 
 /** SQLite database file. */
 export function dbPath(): string {
-    return path.join(dataDir(), 'backup.db');
+    return path.join(/*turbopackIgnore: true*/ dataDir(), 'backup.db');
 }
 
 /**
@@ -37,7 +42,7 @@ export function dbUrl(): string {
 
 /** SharePoint app-only certificate directory (`key.pem`). */
 export function spCertDir(): string {
-    return path.join(dataDir(), 'sp-certificates');
+    return path.join(/*turbopackIgnore: true*/ dataDir(), 'sp-certificates');
 }
 
 /** Creates the data directories if they do not exist. Called once at boot. */
