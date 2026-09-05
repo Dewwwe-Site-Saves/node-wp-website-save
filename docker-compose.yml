@@ -1,0 +1,43 @@
+# Reposite on the NAS: Portainer stack in Repository mode (compose path: docker-compose.yml, branch: main).
+# ENCRYPTION_KEY and SESSION_SECRET come from the stack's environment variables in Portainer (openssl rand -hex 32), never from a file in the repo.
+# Updates are manual: Stack > Editor > Pull and redeploy. The image only moves on version tags (see .github/workflows/docker-build-push.yml).
+
+services:
+    reposite:
+        image: ghcr.io/dewwwe-site-saves/reposite:latest
+        container_name: Reposite-App
+        restart: unless-stopped
+        ports:
+            - '3000:3000' # TODO: pick a free host port
+        environment:
+            - DATA_DIR=/data
+            - TZ=${TZ:-Europe/Paris}
+            - PUID=${PUID:-1000}
+            - PGID=${PGID:-1000}
+            - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+            - SESSION_SECRET=${SESSION_SECRET}
+            - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
+        volumes:
+            # Database, site clones and SharePoint certificate. Must be writable by PUID:PGID.
+            - /volume1/docker/reposite/data:/data
+        networks:
+            - reposite-net
+        healthcheck:
+            test:
+                [
+                    'CMD',
+                    'node',
+                    '-e',
+                    "require('http').get('http://127.0.0.1:3000/api/health', (r) => { if (r.statusCode !== 200) throw new Error(r.statusCode) })",
+                ]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 20s
+
+networks:
+    reposite-net:
+        driver: bridge
+        ipam:
+            config:
+                - subnet: 172.23.X.0/29 # TODO: pick a free /29 (see nas-infra references/networking.md)

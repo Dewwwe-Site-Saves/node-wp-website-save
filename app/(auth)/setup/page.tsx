@@ -4,6 +4,8 @@ import { SetupForm } from '@/components/SetupForm';
 import { countUsers } from '@/lib/db';
 
 export const metadata: Metadata = { title: 'Setup' };
+// Reads the database on every request: without this, `next build` would prerender the page and query an empty database.
+export const dynamic = 'force-dynamic';
 
 /** First run only: once a user exists the page is gone for good. */
 export default async function SetupPage() {

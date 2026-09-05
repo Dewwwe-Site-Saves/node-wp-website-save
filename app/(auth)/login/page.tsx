@@ -5,6 +5,8 @@ import { countUsers } from '@/lib/db';
 import { getCurrentUser } from '@/lib/session';
 
 export const metadata: Metadata = { title: 'Sign in' };
+// Reads the database before any request-bound API: keeps `next build` from prerendering it.
+export const dynamic = 'force-dynamic';
 
 /** Only ever a relative path on this host: the value comes from the URL. `//host` and `/\host` both resolve to another origin. */
 function safeNext(value: string | undefined): string {

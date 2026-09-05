@@ -17,7 +17,10 @@
             "Bash(npm run db:deploy*)",
             "Bash(npm run build*)",
             "Bash(npm run dev*)",
-            "Bash(npm run start*)"
+            "Bash(npm run start*)",
+            "Bash(docker build*)",
+            "Bash(docker run*)",
+            "Bash(docker compose*)"
         ]
     },
     "hooks": {

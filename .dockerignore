@@ -1,0 +1,26 @@
+# Build context for the Dockerfile. Anything listed here never reaches the image, in particular the secrets and the live backups.
+node_modules
+.next
+out
+tsconfig.tsbuildinfo
+lib/generated
+
+# Secrets and runtime data
+.env
+.env.*
+!.env.example
+config.json
+config.txt
+data
+files
+sp-certificates
+prisma/*.db*
+
+# Tooling and docs
+.git
+.github
+.claude
+.vscode
+.DS_Store
+*.md
+scripts/smoke-sync.ts

@@ -11,6 +11,7 @@ const PUBLIC_PATHS = new Set([
     '/api/auth/login',
     '/api/auth/setup',
     '/api/auth/logout',
+    '/api/health',
 ]);
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
