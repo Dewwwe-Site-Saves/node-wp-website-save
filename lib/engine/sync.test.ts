@@ -35,7 +35,7 @@ function localFiles(): string[] {
 }
 
 beforeEach(() => {
-    localRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wpb-sync-'));
+    localRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'reposite-sync-'));
     remote = new FakeRemote();
     remote.put('/www/index.php', '<?php');
     remote.put('/www/wp-config.php', 'config');

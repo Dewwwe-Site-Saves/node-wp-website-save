@@ -10,7 +10,7 @@ export const ROLES = ['admin', 'viewer'] as const;
 
 export type Role = (typeof ROLES)[number];
 
-export const SESSION_COOKIE = 'wpbm_session';
+export const SESSION_COOKIE = 'reposite_session';
 /** Seven days, refreshed at every login only. */
 export const SESSION_MAX_AGE_S = 7 * 24 * 60 * 60;
 

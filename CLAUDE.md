@@ -1,4 +1,4 @@
-# WP Backup Manager — project instructions
+# Reposite — project instructions
 
 Self-hosted backup manager for WordPress sites: pulls files over FTP/SFTP, dumps the database, versions everything in a GitHub repo. Next.js web UI to manage sites, run backups, follow logs and schedule them.
 

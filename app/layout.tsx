@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-    title: { default: 'WP Backup Manager', template: '%s · WP Backup Manager' },
+    title: { default: 'Reposite', template: '%s · Reposite' },
     description: 'Self-hosted backup manager for WordPress sites',
 };
 

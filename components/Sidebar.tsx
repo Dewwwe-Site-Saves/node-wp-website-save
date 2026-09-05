@@ -50,7 +50,7 @@ export function Sidebar({
         `}
         >
             <div className="px-5 py-5 border-b border-slate-700 hidden md:block">
-                <h2 className="text-base font-semibold">WP Backup Manager</h2>
+                <h2 className="text-base font-semibold">Reposite</h2>
             </div>
             <div className="flex flex-col gap-0.5 mt-14 md:mt-2 px-2 flex-1">
                 {LINKS.map((link) => {

@@ -1,4 +1,4 @@
-# WP Backup Manager
+# Reposite
 
 Node.js app for backing up WordPress websites. Downloads files via FTP/SFTP, dumps the database, and pushes everything to a GitHub repository. Web UI to manage sites, run backups, follow logs and schedule everything.
 
@@ -131,6 +131,7 @@ If something goes wrong with a site, delete `$DATA_DIR/files/your-site` and re-r
 - [x] Resilient error handling (never crashes)
 - [x] Web app with UI (Next.js + shadcn/ui + SQLite)
 - [x] Real-time log streaming during backup (SSE)
+- [x] Project rename to Reposite
 
 ### In progress (v2)
 - [x] Prisma data model + migrations
@@ -160,4 +161,3 @@ If something goes wrong with a site, delete `$DATA_DIR/files/your-site` and re-r
 - [ ] Backup size tracking and storage alerts
 - [ ] Webhook triggers (start backup from external systems)
 - [ ] Backup integrity verification (checksum after download)
-- [ ] Project rename to `site-backup-manager` (CMS-agnostic)

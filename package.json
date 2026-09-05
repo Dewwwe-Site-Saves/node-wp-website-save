@@ -1,5 +1,5 @@
 {
-    "name": "wp-backup-manager",
+    "name": "reposite",
     "version": "2.0.0",
     "description": "Self-hosted backup manager for WordPress websites: files over FTP/SFTP, database dump, versioned in GitHub",
     "scripts": {
@@ -19,7 +19,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/Dewwwe-Site-Saves/node-wp-website-save.git"
+        "url": "git+https://github.com/Dewwwe-Site-Saves/reposite.git"
     },
     "keywords": [
         "node",
@@ -33,9 +33,9 @@
     "author": "Dewwwe Site Saves",
     "license": "MIT",
     "bugs": {
-        "url": "https://github.com/Dewwwe-Site-Saves/node-wp-website-save/issues"
+        "url": "https://github.com/Dewwwe-Site-Saves/reposite/issues"
     },
-    "homepage": "https://github.com/Dewwwe-Site-Saves/node-wp-website-save#readme",
+    "homepage": "https://github.com/Dewwwe-Site-Saves/reposite#readme",
     "dependencies": {
         "@base-ui/react": "^1.7.0",
         "@hugeicons/core-free-icons": "^4.3.0",

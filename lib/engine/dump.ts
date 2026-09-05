@@ -90,7 +90,7 @@ async function triggerDump(domain: string, token: string, signal?: AbortSignal):
     try {
         response = await fetch(`https://${domain}/${DUMP_SCRIPT_NAME}`, {
             method: 'GET',
-            headers: { 'X-Backup-Token': token, 'User-Agent': 'wp-backup-manager' },
+            headers: { 'X-Backup-Token': token, 'User-Agent': 'reposite' },
             redirect: 'manual',
             signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
         });

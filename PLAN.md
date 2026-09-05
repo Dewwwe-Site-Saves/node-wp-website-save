@@ -1,4 +1,4 @@
-# Plan : WP Backup Manager v2
+# Plan : Reposite v2
 
 > Rewritten 2026-09-03 after the full audit. No production install exists yet, so the
 > data model, file layout and engine internals can change freely. The audit findings are
@@ -213,7 +213,7 @@ Everything in this phase is pure code with no Next.js or database import. Unit-t
 - Credentials: `env.GIT_ASKPASS` points to `helpers/git-askpass.sh` (prints
   `$GIT_BACKUP_TOKEN`), `env.GIT_BACKUP_TOKEN` set per invocation, `GIT_TERMINAL_PROMPT=0`.
   Remote URLs are plain `https://github.com/<owner>/<repo>.git`.
-- Identity via `-c user.name="WP Backup Manager" -c user.email=<Settings.githubEmail>` per
+- Identity via `-c user.name="Reposite" -c user.email=<Settings.githubEmail>` per
   invocation. Never `--global`.
 - `ensureRepo(localPath, repoUrl)`: clone if missing or `.git` absent; otherwise
   `remote set-url origin <repoUrl>` (drops any token left in an old clone) then
@@ -420,7 +420,7 @@ Every handler: `await params`, `parseInt` guarded, body parsed with zod, errors 
 - History page: pagination and site/status filters backed by `/api/backups`.
 - Settings page: GitHub (owner, email, token with "Test" button), SharePoint, schedule,
   concurrency, retention. Secrets masked with a reveal-on-edit field.
-- Commit identity configurable globally: new `Settings.githubName` column (migration), "Commit author" fields (name + email) in the GitHub section of Settings. `GithubConfig` gains `name`, `git.ts` drops the hard-coded `AUTHOR_NAME` constant and uses it, falling back to `WP Backup Manager` when the setting is empty. Per-site override is listed under Later.
+- Commit identity configurable globally: new `Settings.githubName` column (migration), "Commit author" fields (name + email) in the GitHub section of Settings. `GithubConfig` gains `name`, `git.ts` drops the hard-coded `AUTHOR_NAME` constant and uses it, falling back to `Reposite` when the setting is empty. Per-site override is listed under Later.
 - Site form: "Use global schedule" maps to `cronSchedule = null`; "Test connection" button.
 - Setup and login pages.
 - Props typed from Prisma types (`Site`, `Backup`); no `any`.
@@ -451,7 +451,7 @@ Verified in `next dev` on 2026-09-04: setup flow on an empty database, login, wr
   Runner installs `git` only, copies `.next/standalone`, `.next/static`, `public`, `prisma/`,
   `helpers/`.
 - `docker-entrypoint.sh`: `prisma migrate deploy` then `node server.js`.
-- `docker-compose.yml`: dedicated `/29` subnet, volume `/volume1/docker/wp-backup/data:/data`,
+- `docker-compose.yml`: dedicated `/29` subnet, volume `/volume1/docker/reposite/data:/data`,
   env from `.env`, `restart: unless-stopped`. No SSH mount needed.
 - `.dockerignore`: `node_modules`, `.next`, `data`, `files`, `.git`.
 - Rollout: `/setup` to create the admin, import the 7 sites with `import-config.ts`, move the

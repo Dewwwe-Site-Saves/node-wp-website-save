@@ -32,6 +32,7 @@
         "prestashop",
         "prisma",
         "putenv",
+        "reposite",
         "restic",
         "sftp",
         "shadcn",
@@ -42,7 +43,6 @@
         "unlistable",
         "vitest",
         "webroot",
-        "wpbm",
         "zod"
     ]
 }

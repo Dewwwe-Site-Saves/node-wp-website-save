@@ -167,7 +167,7 @@ export function SettingsForm({ settings }: { settings: SettingsView }) {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {field('githubName', 'Commit author name', 'WP Backup Manager')}
+                        {field('githubName', 'Commit author name', 'Reposite')}
                         {field('githubEmail', 'Commit author email', 'backups@example.com')}
                     </div>
                     <SecretField

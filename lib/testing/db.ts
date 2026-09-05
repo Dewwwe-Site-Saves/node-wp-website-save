@@ -6,7 +6,7 @@ import path from 'node:path';
  * Throwaway SQLite database for tests that run Prisma for real. Points `DATA_DIR` at a temp directory, loads the client, replays the migrations. Call it at the top of the test file before importing anything that touches the database (dynamic imports only after this).
  */
 export async function setupTestDatabase() {
-    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-backup-test-'));
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reposite-test-'));
     process.env.DATA_DIR = dataDir;
     process.env.ENCRYPTION_KEY ??= 'ab'.repeat(32);
 

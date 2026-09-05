@@ -45,7 +45,7 @@ function json(status: number, payload: unknown): Response {
 }
 
 beforeEach(() => {
-    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wpb-dump-'));
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reposite-dump-'));
     localPath = path.join(workDir, 'db.sql');
     remote = new FakeRemote();
 });

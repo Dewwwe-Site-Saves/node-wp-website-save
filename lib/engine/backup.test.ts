@@ -20,7 +20,7 @@ const { FakeRemote } = await import('./testing/fake-remote');
 
 const SQL = `-- MySQL dump 10.13\nCREATE TABLE wp_options (id int);\n${'INSERT INTO wp_options VALUES (1);\n'.repeat(50)}`;
 const github = {
-    name: 'WP Backup Manager',
+    name: 'Reposite',
     email: 'backup@example.com',
     token: 'not-used-for-file-remotes',
 };
@@ -69,7 +69,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wpb-run-'));
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reposite-run-'));
     bareRepo = path.join(workDir, 'remote.git');
     execFileSync('git', ['init', '--quiet', '--bare', '--initial-branch=main', bareRepo]);
     localRoot = path.join(workDir, 'files', 'site');

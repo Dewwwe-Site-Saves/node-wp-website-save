@@ -1,6 +1,6 @@
 <?php
 /**
- * Database dump endpoint, uploaded by WP Backup Manager next to wp-config.php for the
+ * Database dump endpoint, uploaded by Reposite next to wp-config.php for the
  * duration of one backup and removed right after.
  *
  * Authentication: the file .dewwwe-backup-token next to this script holds sha256(token);

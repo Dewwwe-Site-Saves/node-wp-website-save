@@ -32,12 +32,12 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wpb-git-'));
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reposite-git-'));
     bareRepo = path.join(workDir, 'remote.git');
     execFileSync('git', ['init', '--quiet', '--bare', '--initial-branch=main', bareRepo]);
     ctx = {
         cwd: path.join(workDir, 'files', 'site'),
-        name: 'WP Backup Manager',
+        name: 'Reposite',
         email: 'backup@example.com',
         token: null,
     };

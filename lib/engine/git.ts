@@ -8,7 +8,7 @@ import type { Logger } from './types';
 const execFileAsync = promisify(execFile);
 
 /** Commit author name when `Settings.githubName` is empty. */
-export const DEFAULT_AUTHOR_NAME = 'WP Backup Manager';
+export const DEFAULT_AUTHOR_NAME = 'Reposite';
 /** Generous: a first push of a large site prints a lot, and stdout of fetch/push is discarded anyway. */
 const MAX_BUFFER = 64 * 1024 * 1024;
 

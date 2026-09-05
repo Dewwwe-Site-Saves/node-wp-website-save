@@ -13,7 +13,7 @@ export function AppShell({ user, children }: { user: SidebarUser; children: Reac
             <div className="flex h-dvh overflow-hidden">
                 {/* Mobile header */}
                 <div className="fixed top-0 left-0 right-0 z-40 md:hidden bg-slate-900 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-white">WP Backup Manager</h2>
+                    <h2 className="text-sm font-semibold text-white">Reposite</h2>
                     <button
                         type="button"
                         onClick={() => setSidebarOpen(!sidebarOpen)}
