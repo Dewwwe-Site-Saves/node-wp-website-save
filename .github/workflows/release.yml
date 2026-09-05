@@ -1,0 +1,60 @@
+name: Create release
+
+# Annotated tag vX.Y.Z -> GitHub Release with the commits since the previous tag. Pre-release when the tag carries a suffix (v2.1.0-beta.1).
+on:
+    push:
+        tags: ['v*.*.*']
+
+permissions:
+    contents: write
+
+jobs:
+    release:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Fetch tags with annotations
+              run: git fetch --tags --force
+
+            - name: Get tag info
+              id: tag_info
+              run: |
+                  PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+                  echo "prev_tag=${PREV_TAG}" >> $GITHUB_OUTPUT
+                  echo "Previous tag: ${PREV_TAG:-'(none - first release)'}"
+
+                  TAG_MESSAGE=$(git cat-file tag "${{ github.ref_name }}" 2>/dev/null | sed -n '/^$/,$p' | sed '1d' | head -1)
+                  echo "message=${TAG_MESSAGE}" >> $GITHUB_OUTPUT
+                  echo "Tag message: ${TAG_MESSAGE:-'(none)'}"
+
+            - name: Generate release notes
+              run: |
+                  TAG=${{ github.ref_name }}
+                  PREV_TAG="${{ steps.tag_info.outputs.prev_tag }}"
+                  REPO="${{ github.repository }}"
+
+                  if [ -z "$PREV_TAG" ]; then
+                    COMMITS=$(git log --pretty=format:"- %s ([%h](https://github.com/${REPO}/commit/%H))")
+                  else
+                    COMMITS=$(git log ${PREV_TAG}..${TAG} --pretty=format:"- %s ([%h](https://github.com/${REPO}/commit/%H))")
+                  fi
+
+                  echo "## Commits in this release" > /tmp/release_notes.md
+                  echo "" >> /tmp/release_notes.md
+                  echo "$COMMITS" >> /tmp/release_notes.md
+                  cat /tmp/release_notes.md
+
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ github.ref_name }}
+                  name: ${{ steps.tag_info.outputs.message && format('{0} - {1}', github.ref_name, steps.tag_info.outputs.message) || github.ref_name }}
+                  body_path: /tmp/release_notes.md
+                  draft: false
+                  prerelease: ${{ contains(github.ref_name, '-') }}
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
