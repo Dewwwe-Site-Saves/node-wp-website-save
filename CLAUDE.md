@@ -38,7 +38,7 @@ Working branch is `v2`. [PLAN.md](./PLAN.md) is the source of truth for scope an
 
 ## Docker
 
-Modelled on Curatr (`~/github/media-quality-tracker`, same stack). Three stages on a pinned Alpine tag (`ARG NODE_IMAGE`, bump it explicitly, never a moving tag): `builder` (`npm ci`, `next build` standalone), `prod-deps` (`npm ci --omit=dev`), `runner` (git, dumb-init, su-exec). The runner copies the standalone output, then the full production `node_modules` on top of it, then `prisma/`, `helpers/`, `scripts/`, `lib/` and the generated client: `prisma` and `tsx` are runtime dependencies on purpose so that `prisma migrate deploy` and the operator scripts run in the container.
+Modelled on Curatr (`~/github/media-quality-tracker`, same stack). Two stages on a pinned Alpine tag (`ARG NODE_IMAGE`, bump it explicitly, never a moving tag): `builder` (`npm ci`, `next build` standalone, then `npm prune --omit=dev` in place; no `--max-old-space-size`, Next strips it from its build worker) and `runner` (git, dumb-init, su-exec). One build stage on purpose: a separate `prod-deps` stage runs in parallel with the build under BuildKit and doubles the peak memory. The runner copies the standalone output, then the full production `node_modules` on top of it, then `prisma/`, `helpers/`, `scripts/`, `lib/` and the generated client: `prisma` and `tsx` are runtime dependencies on purpose so that `prisma migrate deploy` and the operator scripts run in the container.
 
 The entrypoint runs as root only to map PUID/PGID, give `/data` to that user (top-level entries, plus a recursive pass on any clone under `files/` owned by someone else) and apply the migrations, then drops to the app user for `node server.js`. `DATA_DIR=/data`, `PORT=3000`, `/api/health` answers the `HEALTHCHECK`.
 
@@ -72,6 +72,7 @@ Spell checking: Code Spell Checker reads `.vscode/cspell.json`. Add project voca
 - Adding a page under `app/(app)/` needs nothing for auth; a new public route must be added to `PUBLIC_PATHS` in `proxy.ts`.
 - A page or GET route that reads the database exports `dynamic = 'force-dynamic'`, even when it also reads cookies or search params: `next build` prerenders anything it can, and it does so against an empty database.
 - All runtime state lives under `DATA_DIR` (env var, falls back to `cwd/data`): database, `files/<repo>` clones, `sp-certificates/`. Never build paths from `__dirname` — it breaks the Docker standalone build.
+- The build-time tracer of `next build` (Turbopack) reads `path.join(process.cwd(), 'x')` as a reference to `x` and `path.join(anything, 'name')` as a `**/name` glob over the project, and copies the matches into the standalone output. The path helpers in `lib/paths.ts` and the `.git` join in `lib/engine/git.ts` carry `/*turbopackIgnore: true*/` for that reason, `next.config.js` excludes `data/` from the trace as a safety net, and a build that prints "matches N files" or "tracing of the whole project" is a bug to fix, not a warning to ignore: it once pulled the 100k files of the site clones under `data/` into the build. With the comments in place a build with the clones in the tree takes a few seconds and peaks under 1 GB.
 - Tests are vitest, colocated as `*.test.ts` next to the module.
 
 ## Do not touch
