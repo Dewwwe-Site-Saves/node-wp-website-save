@@ -476,7 +476,7 @@ Verified in `next dev` on 2026-09-04: setup flow on an empty database, login, wr
 
 ### To verify on the NAS
 
-- The image itself: first boot on an empty volume (migrations, `/setup`), a second boot without a recursive chown, clones moved by hand picked up with their ownership fixed, `/api/health` green in Portainer.
+- The image itself. Verified locally on 2026-09-06 (Docker Desktop, arm64 build): first boot on an empty volume, migrations, `/api/health` 200, `/setup` and login, `reset-password.ts` through `docker exec -u 1000`. Left for the NAS: the amd64 image from GHCR, real ownership on a Linux bind mount (Docker Desktop on macOS ignores the entrypoint's `chown`, everything shows as root there), a second boot without a recursive chown, clones moved by hand picked up with their ownership fixed, `/api/health` green in Portainer.
 - The browser checks left from Phase 4: the 429 after five failed logins, sign out, password change, `reset-password.ts` through `docker exec`, the layout on a phone.
 - The real-site checks left from Phase 2: the five other sites once each, a scheduled run firing on its own, a run with nothing changed.
 - Disable the Jenkins "Saves" jobs before enabling the scheduler: two systems pushing tags and Releases on the same repos would collide. Then rewrite `docs/projects/web/site-backups.md` in dewwwe-docs, which still describes the Jenkins flow.
