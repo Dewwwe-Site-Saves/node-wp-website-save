@@ -442,7 +442,7 @@ Every handler: `await params`, `parseInt` guarded, body parsed with zod, errors 
 - The SSE stream sends a `: ping` comment every 25 s so an idle reverse proxy keeps the connection; the browser `EventSource` is left to reconnect on its own and the log view resets on each open, since the route replays the buffer.
 - Pages live in route groups: `app/(app)/` (sidebar layout, `getCurrentUser()` once per request) and `app/(auth)/` (centered card). The `AppShell` client component owns the mobile sidebar state; `app/layout.tsx` is a server component with `metadata`.
 
-Verified in `next dev` on 2026-09-04: setup flow on an empty database, login, wrong credentials refused, `/setup` after a user exists (lands on the dashboard through `/login`), settings save with a schedule change (the scheduler now logs what it re-armed), "Test token", "Test connection" on the edit form with an empty password and on the create form (asks for the password, no stored one yet), history filters and paging, Release link in the history rows, live modal on a queued and on a running backup, cancel from the modal. Still to check before Phase 5: the 429 after five failed logins, sign out, password change, `scripts/reset-password.ts`, the layout on a phone.
+Verified in `next dev` on 2026-09-04: setup flow on an empty database, login, wrong credentials refused, `/setup` after a user exists (lands on the dashboard through `/login`), settings save with a schedule change (the scheduler now logs what it re-armed), "Test token", "Test connection" on the edit form with an empty password and on the create form (asks for the password, no stored one yet), history filters and paging, Release link in the history rows, live modal on a queued and on a running backup, cancel from the modal. Left for the NAS checks of Phase 5: the 429 after five failed logins, sign out, password change, `scripts/reset-password.ts`, the layout on a phone.
 
 ## Phase 5 — Docker and NAS deployment
 
@@ -462,6 +462,23 @@ Verified in `next dev` on 2026-09-04: setup flow on an empty database, login, wr
   (Contents read/write + Metadata read on the backup repos), rotate the FTP/SFTP passwords,
   regenerate the SharePoint certificate, verify every backup repo is private, restore the
   developer's global git identity on the Mac (`git config --global user.name/email`).
+
+### Done (2026-09-06) and deviations from the plan
+
+- Modelled on Curatr (`media-quality-tracker`, same stack): Alpine base instead of Debian slim, pinned to an exact tag (`ARG NODE_IMAGE=node:24.13.1-alpine3.23`), PUID/PGID entrypoint with `su-exec` and `dumb-init`, public `/api/health` route for the `HEALTHCHECK` and Portainer.
+- The image is not built on the NAS: `.github/workflows/docker-build-push.yml` publishes it on GHCR (`staging` on main, `latest` + semver on `v*` tags, `:<branch>` on `workflow_dispatch`), `release.yml` creates the GitHub Release on a tag, `ci.yml` runs typecheck, format check and tests on every push. Deployment stays manual (Pull and redeploy in Portainer), no webhook.
+- `prisma` and `tsx` moved to `dependencies`: the runner carries the full production `node_modules` (`npm ci --omit=dev`, copied over the standalone output) so that `prisma migrate deploy` and the operator scripts run inside the container. `import-config.ts` runs through `docker exec`, no local preparation of the database.
+- Ownership at boot: top-level entries of `/data` only, plus a recursive pass on each clone under `files/` whose owner is not PUID (one-time, after clones copied by hand).
+- The login and setup pages gained `dynamic = 'force-dynamic'`: they query the database before any request-bound API, and `next build` would have prerendered them against an empty database.
+- Compose in Repository mode with the secrets in the stack environment (Portainer cannot read an `env_file` on the host). Subnet left as `172.23.X.0/29` until a free one is picked.
+- The project was renamed to Reposite just before (repo `Dewwwe-Site-Saves/reposite`, default commit author `Reposite`, cookie `reposite_session`). The global git identity on the Mac is already back to the developer's.
+
+### To verify on the NAS
+
+- The image itself: first boot on an empty volume (migrations, `/setup`), a second boot without a recursive chown, clones moved by hand picked up with their ownership fixed, `/api/health` green in Portainer.
+- The browser checks left from Phase 4: the 429 after five failed logins, sign out, password change, `reset-password.ts` through `docker exec`, the layout on a phone.
+- The real-site checks left from Phase 2: the five other sites once each, a scheduled run firing on its own, a run with nothing changed.
+- Disable the Jenkins "Saves" jobs before enabling the scheduler: two systems pushing tags and Releases on the same repos would collide. Then rewrite `docs/projects/web/site-backups.md` in dewwwe-docs, which still describes the Jenkins flow.
 
 ---
 
@@ -485,7 +502,8 @@ Verified in `next dev` on 2026-09-04: setup flow on an empty database, login, wr
 - **SSH remotes** as an alternative to the HTTPS token (app-generated key shown in Settings).
 - **Restic backend** instead of git (deduplication, encryption, retention).
 - **WP-CLI dump** for sites with SSH access.
-- **Prestashop / Drupal** dump scripts, project rename to `site-backup-manager`.
+- **Prestashop / Drupal** dump scripts.
+- **Hardening headers** as in Curatr's `next.config.ts` (CSP, `X-Frame-Options`, `poweredByHeader: false`); a multi-arch image (`linux/arm64`) if the NAS ever changes.
 - **Diff viewer** between two backups, size tracking and storage alerts.
 - **File explorer**: browse the tree of a given backup (Release/tag) from the UI, view or download a single file, entry point for a per-file restore. Read from the local clone via `git ls-tree` / `git show`, no extra storage.
 - **Structured logs**: log lines carry a level and a step (scan, download, dump, commit, push, sharepoint), the live log modal and the backup detail page get level filters and a per-step timeline with durations. Inspired by the DBackup dashboard.

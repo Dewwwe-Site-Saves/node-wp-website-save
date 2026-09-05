@@ -116,6 +116,44 @@ Every enabled site is scheduled with node-cron, on its own cron expression or th
 
 If something goes wrong with a site, delete `$DATA_DIR/files/your-site` and re-run the backup. It will clone the repo and do a full download.
 
+## Deploy (Docker)
+
+The image is built by GitHub Actions and published on GHCR as `ghcr.io/dewwwe-site-saves/reposite`: `staging` on every push to `main`, `latest` and `X.Y.Z` on version tags, `<branch>` when the workflow is run by hand. On the NAS it runs as a Portainer stack from [docker-compose.yml](./docker-compose.yml): Stacks, Add stack, Repository, compose path `docker-compose.yml`, branch `main`. Set `ENCRYPTION_KEY` and `SESSION_SECRET` in the stack's environment variables (`openssl rand -hex 32`), pick a host port and a free `/29` subnet in the compose, mount the data directory on `/data`.
+
+The container runs as `PUID:PGID` (default `1000:1000`): the entrypoint makes the data directory theirs, applies the migrations and starts the server. Health is reported on `/api/health`. Updates are manual: Stack, Editor, Pull and redeploy.
+
+First run: open the app, create the admin on `/setup`, fill in Settings (commit author, GitHub token, SharePoint). To import the sites of a legacy `config.json`, copy it into the data volume, run the import in the container as the app user, then delete it (it holds cleartext passwords):
+
+```bash
+docker cp config.json Reposite-App:/data/config.json
+docker exec -u 1000 Reposite-App npx tsx scripts/import-config.ts /data/config.json
+docker exec Reposite-App rm /data/config.json
+```
+
+Lost password in Docker:
+
+```bash
+docker exec -u 1000 Reposite-App npx tsx scripts/reset-password.ts admin@example.com
+```
+
+Existing clones can be moved into `/data/files/<repo>` while the container is stopped: the entrypoint fixes their ownership at the next boot and the engine resets their remote URL at the next run.
+
+Local build, to check the image before pushing:
+
+```bash
+docker build -t reposite:local .
+docker run --rm -p 3000:3000 -v "$(mktemp -d):/data" -e ENCRYPTION_KEY=$(openssl rand -hex 32) -e SESSION_SECRET=$(openssl rand -hex 32) -e SESSION_COOKIE_SECURE=false reposite:local
+```
+
+## Versioning & Releases
+
+Versions are git tags. Pushing an annotated `vX.Y.Z` tag makes GitHub Actions build the image with that version, tag it `latest`, and create a GitHub Release whose notes list the commits since the previous tag. A tag with a suffix (`v2.1.0-beta.1`) is a pre-release.
+
+```bash
+git tag -a v2.0.0 -m "Release v2.0.0"
+git push origin v2.0.0
+```
+
 ## Roadmap
 
 ### Done
@@ -141,7 +179,8 @@ If something goes wrong with a site, delete `$DATA_DIR/files/your-site` and re-r
 - [x] Login + first-run setup
 - [x] Scheduled backups via node-cron (per-site cron schedule, global default in Settings)
 - [x] Settings page + test connection
-- [ ] Docker deployment for Synology NAS (standalone Next.js image)
+- [x] Docker deployment for Synology NAS (standalone Next.js image, PUID/PGID, Portainer stack)
+- [x] CI: typecheck and tests on every push, image published on GHCR, GitHub Release on version tag
 
 ### Planned
 - [ ] Repo history retention (keep the last N releases, squash older snapshots)
