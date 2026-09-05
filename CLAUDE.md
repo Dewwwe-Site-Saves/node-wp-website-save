@@ -42,7 +42,7 @@ Modelled on Curatr (`~/github/media-quality-tracker`, same stack). Two stages on
 
 The entrypoint runs as root only to map PUID/PGID, give `/data` to that user (top-level entries, plus a recursive pass on any clone under `files/` owned by someone else) and apply the migrations, then drops to the app user for `node server.js`. `DATA_DIR=/data`, `PORT=3000`, `/api/health` answers the `HEALTHCHECK`.
 
-The image is built by GitHub Actions, never on the NAS: `staging` on `main`, `latest` and the semver tag on `vX.Y.Z`, `<branch>` on a manual run. Deployment is a Portainer stack in Repository mode on `docker-compose.yml`, secrets in the stack environment, updated by hand with Pull and redeploy. The subnet in the compose is a `172.23.X.0/29` placeholder until a free one is picked.
+The image is built by GitHub Actions, never on the NAS: `staging` on `main`, `latest` and the semver tag on `vX.Y.Z`, `<branch>` on a manual run. Until the merge, every push to `v2` also builds `:v2`, because GitHub only offers manual runs for workflows that exist on the default branch; drop `v2` from the trigger after the merge. `main` must stay on the v1 code until the NAS has switched: the Jenkins job that runs the current backups clones it. Deployment is a Portainer stack in Repository mode on `docker-compose.yml`, secrets in the stack environment, updated by hand with Pull and redeploy. The subnet in the compose is a `172.23.X.0/29` placeholder until a free one is picked.
 
 ## Commands
 

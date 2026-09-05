@@ -1,10 +1,10 @@
 name: Build and push Docker image
 
 # main -> :staging, version tags -> :latest and :X.Y.Z, pull requests build without pushing.
-# workflow_dispatch from any branch pushes a :<branch> tag, to try an image on the NAS before tagging.
+# workflow_dispatch from any branch pushes a :<branch> tag, to try an image on the NAS before tagging. GitHub only offers the manual run for workflows present on the default branch, so until v2 is merged every push to v2 builds :v2 as well. Remove v2 from the list after the merge.
 on:
     push:
-        branches: [main]
+        branches: [main, v2]
         tags: ['v*.*.*']
     pull_request:
         branches: [main]
@@ -53,7 +53,7 @@ jobs:
                       type=raw,value=staging,enable=${{ github.ref == 'refs/heads/main' }}
                       type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
                       type=semver,pattern={{version}}
-                      type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' }}
+                      type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/v2' }}
 
             - name: Build and push Docker image
               uses: docker/build-push-action@v6

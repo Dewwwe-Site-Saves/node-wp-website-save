@@ -480,6 +480,7 @@ Verified in `next dev` on 2026-09-04: setup flow on an empty database, login, wr
 - The browser checks left from Phase 4: the 429 after five failed logins, sign out, password change, `reset-password.ts` through `docker exec`, the layout on a phone.
 - The real-site checks left from Phase 2: the five other sites once each, a scheduled run firing on its own, a run with nothing changed.
 - Disable the Jenkins "Saves" jobs before enabling the scheduler: two systems pushing tags and Releases on the same repos would collide. Then rewrite `docs/projects/web/site-backups.md` in dewwwe-docs, which still describes the Jenkins flow.
+- Only then merge `v2` into `main` and tag `v2.0.0`: the Jenkins job clones `main`, which must keep the v1 code until the switch. GitHub lists `workflow_dispatch` only for workflows on the default branch, so the image workflow also runs on every push to `v2` for now (`:v2` tag); remove that trigger after the merge.
 
 ---
 
