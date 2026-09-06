@@ -174,7 +174,7 @@ model Settings {                            // singleton, id = 1
   spSiteName         String?
   spListName         String?
   spDateField        String?
-  defaultCron        String  @default("0 3 * * *")
+  defaultCron        String  @default("0 2 1,15 * *")
   concurrency        Int     @default(2)
   retentionDays      Int     @default(90)  // prune Backup rows older than this
   updatedAt          DateTime @updatedAt

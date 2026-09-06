@@ -1,10 +1,11 @@
 # Reposite on the NAS: Portainer stack in Repository mode (compose path: docker-compose.yml, branch: main).
 # ENCRYPTION_KEY and SESSION_SECRET come from the stack's environment variables in Portainer (openssl rand -hex 32), never from a file in the repo.
 # Updates are manual: Stack > Editor > Pull and redeploy. The image only moves on version tags (see .github/workflows/docker-build-push.yml).
+# REPOSITE_TAG selects the image tag: unset for :latest (releases), a branch name such as v2 to try a pre-release build.
 
 services:
     reposite:
-        image: ghcr.io/dewwwe-site-saves/reposite:latest
+        image: ghcr.io/dewwwe-site-saves/reposite:${REPOSITE_TAG:-latest}
         container_name: Reposite-App
         restart: unless-stopped
         ports:
