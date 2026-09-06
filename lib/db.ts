@@ -5,6 +5,7 @@ import type { Role } from './auth';
 import { decrypt, encrypt } from './crypto';
 import { DEFAULT_AUTHOR_NAME } from './engine/git';
 import type { GithubConfig, Protocol, SharePointConfig, SiteConfig } from './engine/types';
+import type { MailConfig } from './notifications/mailer';
 import { spCertDir } from './paths';
 import { prisma } from './prisma';
 import { ACTIVE_STATUSES, SECRET_MASK } from './validation';
@@ -14,6 +15,7 @@ import type {
     SettingsInput,
     SiteCreateInput,
     SiteUpdateInput,
+    SmtpSecurity,
 } from './validation';
 
 // ============ Users ============
@@ -213,21 +215,32 @@ export async function getSettings(): Promise<Settings> {
     }
 }
 
-/** Settings as the page and the API expose them: the token never leaves the server, only whether one is stored (`SECRET_MASK`). Sending the mask back keeps it. */
-export type SettingsView = Omit<Settings, 'githubTokenEnc'> & { githubToken: string };
+/** Settings as the page and the API expose them: the secrets never leave the server, only whether one is stored (`SECRET_MASK`). Sending the mask back keeps it. */
+export type SettingsView = Omit<Settings, 'githubTokenEnc' | 'smtpPasswordEnc'> & {
+    githubToken: string;
+    smtpPassword: string;
+};
 
 export function toSettingsView(settings: Settings): SettingsView {
-    const { githubTokenEnc, ...rest } = settings;
-    return { ...rest, githubToken: githubTokenEnc ? SECRET_MASK : '' };
+    const { githubTokenEnc, smtpPasswordEnc, ...rest } = settings;
+    return {
+        ...rest,
+        githubToken: githubTokenEnc ? SECRET_MASK : '',
+        smtpPassword: smtpPasswordEnc ? SECRET_MASK : '',
+    };
 }
 
-/** An undefined token keeps the stored one. The caller reloads the scheduler: `defaultCron` may have changed. */
+/** An undefined secret keeps the stored one. The caller reloads the scheduler: `defaultCron` may have changed. */
 export async function updateSettings(input: SettingsInput): Promise<Settings> {
     await getSettings();
-    const { githubToken, ...data } = input;
+    const { githubToken, smtpPassword, ...data } = input;
     return prisma.settings.update({
         where: { id: 1 },
-        data: { ...data, ...(githubToken ? { githubTokenEnc: encrypt(githubToken) } : {}) },
+        data: {
+            ...data,
+            ...(githubToken ? { githubTokenEnc: encrypt(githubToken) } : {}),
+            ...(smtpPassword ? { smtpPasswordEnc: encrypt(smtpPassword) } : {}),
+        },
     });
 }
 
@@ -265,6 +278,36 @@ export async function getGithubConfig(): Promise<GithubConfig | null> {
         email: settings.githubEmail,
         token: decrypt(settings.githubTokenEnc),
     };
+}
+
+/** The SMTP columns without the password, as stored or as typed in the form. */
+export type MailFields = Pick<
+    Settings,
+    'smtpHost' | 'smtpPort' | 'smtpSecurity' | 'smtpUser' | 'smtpFrom' | 'notifyTo'
+>;
+
+/** Null until host, sender and at least one recipient are set. The password is taken separately so the SMTP test can use the typed one. */
+export function toMailConfig(fields: MailFields, password: string | null): MailConfig | null {
+    if (!fields.smtpHost || !fields.smtpFrom || !fields.notifyTo) return null;
+    return {
+        host: fields.smtpHost,
+        port: fields.smtpPort,
+        security: fields.smtpSecurity as SmtpSecurity,
+        user: fields.smtpUser,
+        password,
+        from: fields.smtpFrom,
+        to: fields.notifyTo.split(',').map((address) => address.trim()),
+    };
+}
+
+export async function getSmtpPassword(settings: Settings): Promise<string | null> {
+    return settings.smtpPasswordEnc ? decrypt(settings.smtpPasswordEnc) : null;
+}
+
+/** Decrypted SMTP configuration, or null while incomplete. Does not look at `notifyOnError`: that switch belongs to the notifier, the test button works either way. */
+export async function getMailConfig(settings?: Settings): Promise<MailConfig | null> {
+    const s = settings ?? (await getSettings());
+    return toMailConfig(s, await getSmtpPassword(s));
 }
 
 /** Null unless every SharePoint field is filled in. */

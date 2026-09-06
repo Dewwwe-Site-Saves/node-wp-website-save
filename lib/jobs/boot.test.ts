@@ -82,8 +82,8 @@ describe('sweepInterruptedBackups', () => {
         const running = await createBackup(site, 'running', 0);
         const success = await createBackup(site, 'success', 0);
 
-        expect(await boot.sweepInterruptedBackups()).toBe(2);
-        expect(await boot.sweepInterruptedBackups()).toBe(0);
+        expect(await boot.sweepInterruptedBackups()).toEqual(['a.example.com', 'a.example.com']);
+        expect(await boot.sweepInterruptedBackups()).toEqual([]);
 
         for (const id of [pending, running]) {
             const row = await prisma.backup.findUniqueOrThrow({ where: { id } });

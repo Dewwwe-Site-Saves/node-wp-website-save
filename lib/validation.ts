@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { validate as validateCron } from 'node-cron';
-import { BACKUP_STATUSES, PROTOCOLS, SECRET_MASK } from './constants';
+import { BACKUP_STATUSES, PROTOCOLS, SECRET_MASK, SMTP_SECURITIES } from './constants';
 
 // The constants live in `constants.ts` (browser-safe); re-exported so server code keeps one import.
 export {
@@ -8,10 +8,11 @@ export {
     BACKUP_STATUSES,
     PROTOCOLS,
     SECRET_MASK,
+    SMTP_SECURITIES,
     TRIGGER_TYPES,
     isActive,
 } from './constants';
-export type { ActiveStatus, BackupStatus, TriggerType } from './constants';
+export type { ActiveStatus, BackupStatus, SmtpSecurity, TriggerType } from './constants';
 
 // ============ Field schemas ============
 
@@ -54,6 +55,20 @@ export const webRootPathSchema = z
 export const cronSchema = z.string().trim().refine(validateCron, 'Invalid cron expression');
 
 export const emailSchema = z.string().trim().toLowerCase().pipe(z.email());
+
+/** Mail recipients typed as one line: any mix of commas, semicolons and spaces between addresses. Stored normalized as `a@x, b@y`, null when empty. */
+export const recipientsSchema = z
+    .string()
+    .nullable()
+    .default(null)
+    .transform((value) =>
+        (value ?? '')
+            .split(/[\s,;]+/)
+            .filter(Boolean)
+            .map((address) => address.toLowerCase()),
+    )
+    .pipe(z.array(z.email('Invalid email address')))
+    .transform((list) => (list.length > 0 ? list.join(', ') : null));
 
 export const passwordSchema = z.string().min(12, 'At least 12 characters');
 
@@ -111,36 +126,70 @@ const optionalText = z
     .default(null)
     .transform((value) => value || null);
 
-export const settingsSchema = z.object({
-    githubName: optionalText,
-    githubEmail: emailSchema
-        .nullable()
-        .default(null)
-        .or(z.literal('').transform(() => null)),
-    /** Plain token to store, or empty/masked value to keep the current one. */
-    githubToken: z
-        .string()
-        .trim()
-        .optional()
-        .transform((value) => (value && value !== SECRET_MASK ? value : undefined)),
-    spTenantId: optionalText,
-    spClientId: optionalText,
-    spCertThumbprint: optionalText,
-    spTenantName: optionalText,
-    spSiteName: optionalText,
-    spListName: optionalText,
-    spDateField: optionalText,
-    defaultCron: cronSchema,
-    concurrency: z.number().int().min(1).max(5),
-    retentionDays: z.number().int().min(1).max(3650),
-});
+const optionalEmail = emailSchema
+    .nullable()
+    .default(null)
+    .or(z.literal('').transform(() => null));
+
+/** Plain secret to store, or empty/masked value to keep the current one. */
+const storedSecret = z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value && value !== SECRET_MASK ? value : undefined));
+
+const smtpFields = {
+    notifyTo: recipientsSchema,
+    smtpHost: optionalText,
+    smtpPort: z.number().int().min(1).max(65535).default(587),
+    smtpSecurity: z.enum(SMTP_SECURITIES).default('starttls'),
+    smtpUser: optionalText,
+    smtpPassword: storedSecret,
+    smtpFrom: optionalEmail,
+};
+
+export const settingsSchema = z
+    .object({
+        githubName: optionalText,
+        githubEmail: optionalEmail,
+        githubToken: storedSecret,
+        spTenantId: optionalText,
+        spClientId: optionalText,
+        spCertThumbprint: optionalText,
+        spTenantName: optionalText,
+        spSiteName: optionalText,
+        spListName: optionalText,
+        spDateField: optionalText,
+        defaultCron: cronSchema,
+        concurrency: z.number().int().min(1).max(5),
+        retentionDays: z.number().int().min(1).max(3650),
+        notifyOnError: z.boolean().default(false),
+        ...smtpFields,
+    })
+    .superRefine((data, ctx) => {
+        // Notifications can only be switched on with a complete SMTP block: a silent misconfiguration would defeat the point.
+        if (!data.notifyOnError) return;
+        const missing = (['smtpHost', 'smtpFrom', 'notifyTo'] as const).filter((key) => !data[key]);
+        for (const key of missing) {
+            ctx.addIssue({
+                code: 'custom',
+                path: [key],
+                message: 'Required to enable notifications',
+            });
+        }
+    });
 
 export type SettingsInput = z.infer<typeof settingsSchema>;
 
 /** Token to check; empty or masked means the stored one. */
 export const githubTestSchema = z.object({
-    githubToken: settingsSchema.shape.githubToken,
+    githubToken: storedSecret,
 });
+
+/** The SMTP block as typed in the form; an empty or masked password means the stored one. */
+export const smtpTestSchema = z.object(smtpFields);
+
+export type SmtpTestInput = z.infer<typeof smtpTestSchema>;
 
 // ============ Backups ============
 

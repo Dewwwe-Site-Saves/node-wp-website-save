@@ -2,6 +2,7 @@ import { schedule, type ScheduledTask } from 'node-cron';
 import { assertEncryptionKey } from '../crypto';
 import { getSettings } from '../db';
 import { errorMessage } from '../engine/cancel';
+import * as notifier from '../notifications/notifier';
 import { initDatabase, prisma } from '../prisma';
 import { ACTIVE_STATUSES } from '../validation';
 import * as scheduler from './scheduler';
@@ -31,10 +32,17 @@ export async function boot(): Promise<void> {
 
     if (!state.booted) {
         const swept = await sweepInterruptedBackups();
-        if (swept > 0) console.warn(`[boot] ${swept} backup(s) interrupted by the last restart`);
+        if (swept.length > 0) {
+            console.warn(`[boot] ${swept.length} backup(s) interrupted by the last restart`);
+            // In the background: the first request must not wait for the mail server.
+            notifier
+                .notifyInterrupted(swept)
+                .catch((error) => console.error(`[notify] interrupted: ${errorMessage(error)}`));
+        }
         state.booted = true;
     }
 
+    notifier.start();
     await scheduler.reload();
 
     await state.retention?.destroy();
@@ -64,17 +72,23 @@ export function checkEnvironment(): void {
     console.warn(`[boot] ${message}`);
 }
 
-/** Rows still `pending` or `running` at start-up belonged to the previous process: nothing will ever finish them. Returns the number of rows swept. */
-export async function sweepInterruptedBackups(): Promise<number> {
-    const { count } = await prisma.backup.updateMany({
+/** Rows still `pending` or `running` at start-up belonged to the previous process: nothing will ever finish them. Returns the domain of each row swept, for the notification. */
+export async function sweepInterruptedBackups(): Promise<string[]> {
+    const rows = await prisma.backup.findMany({
         where: { status: { in: [...ACTIVE_STATUSES] } },
+        select: { id: true, site: { select: { domain: true } } },
+        orderBy: { id: 'asc' },
+    });
+    if (rows.length === 0) return [];
+    await prisma.backup.updateMany({
+        where: { id: { in: rows.map((row) => row.id) } },
         data: {
             status: 'error',
             finishedAt: new Date(),
             errorMessage: 'Interrupted by server restart',
         },
     });
-    return count;
+    return rows.map((row) => row.site.domain);
 }
 
 /** Deletes backups older than `Settings.retentionDays`, always keeping the last `RETENTION_KEEP_LAST` per site and never an active one. Returns the number of rows deleted. */

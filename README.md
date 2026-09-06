@@ -36,12 +36,17 @@ Environment variables, see [.env.example](./.env.example):
 - `SESSION_SECRET` — signs the session cookie
 - `SESSION_COOKIE_SECURE` — `false` to allow the session cookie over plain HTTP (production marks it Secure by default)
 - `TZ` — timezone for cron schedules
+- `APP_URL` — public URL of the instance, for the links in notification mails (optional)
 
 ### GitHub
 
 Fine-grained personal access token restricted to the backup repos, with `Contents: read/write` and `Metadata: read`. Stored encrypted, used for pushes and releases. The "Test token" button in Settings checks the token against GitHub and the push access to every site's repository; the commit author name and email are configured next to it.
 
 > Backup repos must be **private**: they contain `wp-config.php` and the full database dump.
+
+### Notifications
+
+Settings has an SMTP block (host, port, TLS / STARTTLS / none, credentials, sender, recipients) and an "Errors" switch. When it is on, every failed run sends a mail with the error, the dates and the last lines of the log, and a restart that interrupts backups sends one mail listing them. "Send test mail" checks the block before saving. The password is stored encrypted, the switch cannot be turned on while the block is incomplete, and a mail that cannot be sent is only logged in the container output: notifications never affect a backup.
 
 ### SharePoint List update
 
@@ -129,6 +134,7 @@ The image is built by GitHub Actions and published on GHCR as `ghcr.io/dewwwe-si
 - `REPOSITE_DATA` — host directory mounted on `/data`
 - `REPOSITE_SUBNET` — a free `/29` for the stack network
 - `REPOSITE_PORT` — host port (default `3000`), `PUID` / `PGID` (default `1000`), `TZ`, `REPOSITE_TAG` (default `latest`)
+- `APP_URL` — public URL of the instance, optional, for the links in notification mails
 
 The container runs as `PUID:PGID`: the entrypoint makes the data directory theirs, applies the migrations and starts the server. Health is reported on `/api/health`. Updates are manual: Stack, Editor, Pull and redeploy. Put the app behind an HTTPS reverse proxy (an SSO gateway in front of it works, the app keeps its own login).
 

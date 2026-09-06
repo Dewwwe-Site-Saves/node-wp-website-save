@@ -11,25 +11,30 @@ Everything below is code that exists and is covered by tests, but has not yet be
 - [ ] A run with nothing changed on the remote: no commit, no tag, no Release, status `success`
 - [ ] Login throttle: 429 with `Retry-After` after five failed attempts from the same address
 - [ ] A backup cancelled from the UI while a download is in progress leaves the clone consistent (next run recovers)
-- [ ] A container restart during a run: the interrupted backup is marked `error` at the next boot and the next scheduled run goes through
+- [ ] A container restart during a run: the next scheduled run goes through after the sweep (the sweep itself passed locally on 2026-09-06: the backup was marked `error` "Interrupted by server restart" and the "interrupted" mail arrived)
+- [ ] Notifications, test mail: "Send test mail" shows the server's response line and the message reaches every recipient (delivery confirmed locally on 2026-09-06, the first missing mails were an SMTP misconfiguration on the sending side, not the app)
+- [ ] Notifications, failure mail: a real failed run (wrong FTP password on a test site) produces the mail with the error, the log tail and the history link (`APP_URL` set in the stack environment)
+- [ ] Notifications, partial refusal: a bogus recipient next to a valid one shows as refused in the test result and as a warning in the container log
+- [ ] Notifications, switch: saving with "Errors" on and an incomplete SMTP block is refused with the field named; with the switch off nothing is sent on a failed run
+- [ ] Notifications, password manager: typing the SMTP password and sending a test mail no longer triggers the "save password" prompt (opt-out attributes for 1Password, LastPass, Bitwarden, Dashlane; Chrome's built-in manager has no opt-out)
 
 ## Next
 
 Features with a rough design, in the order they are likely to be built.
 
+- [ ] **Hack detection**. PHP in `wp-content/uploads`, suspicious patterns, core checksum verification via `api.wordpress.org`. Adds `hackAlert` / `hackDetails` columns by migration. Alerts go out through the notification mails, as a second switch next to "Errors".
+- [ ] **Multi-user and audit log**. Two halves of one feature: identity per person, then a trace of who did what. Identity comes from the SSO gateway in front of the app (Authelia forward-auth headers `Remote-User` / `Remote-Email` / `Remote-Groups`): the user row is created on first visit, the role derived from the group, the mode enabled explicitly by an env var and the headers trusted only behind a shared secret set by the reverse proxy, since the container port is reachable from the LAN. No OIDC client, no new dependency. The audit log is an `AuditEvent` table written from every mutating handler and from the queue (who queued or cancelled a backup), with a page in Settings. `viewer` role enforced through `requireRole`.
 - [ ] **Retry on transient remote errors**. FTP hosts sometimes answer "temporarily unavailable" for a few seconds and the run fails on the first such error (issue #5). Retry a listing or a download a few times with a delay before giving up, and count the retries in the run stats.
 - [ ] **Design pass on the UI**. Phone layout, spacing and typography, empty states, the live log modal on small screens. Done as one dedicated pass rather than page by page.
 - [ ] **Repo history retention**. Keep the last N Releases per site and drop older snapshots. Deleting tags and Releases alone does not free space on GitHub; reclaiming it means re-rooting the branch (new orphan commit from the current tree, force push, GitHub runs gc later). Needs a setting per site and a dry-run report before the first real run.
-- [ ] **Hack detection**. PHP in `wp-content/uploads`, suspicious patterns, core checksum verification via `api.wordpress.org`. Adds `hackAlert` / `hackDetails` columns by migration.
-- [ ] **Notifications**. SMTP settings, `nodemailer`, templates for success, failure and hack alerts, daily digest. Discord and Slack webhooks.
 - [ ] **Restore**. Pick a Release or tag, upload files over FTP/SFTP, `restore-db.php` with the same token scheme, automatic pre-restore backup.
-- [ ] **Multi-user**. Users page in Settings, invitations, `viewer` role enforced through `requireRole`.
-- [ ] **Hardening headers**. CSP, `X-Frame-Options`, `poweredByHeader: false` in `next.config.js`.
+- [ ] **Hardening headers and origin checks**. CSP, `X-Frame-Options`, `poweredByHeader: false` in `next.config.js`. `APP_URL` (already read by `lib/env.ts` for the mails) becomes the trusted origin: mutating API requests must carry a matching `Origin` (CSRF), the `next=` parameter of the login page is only followed when it stays on that origin, and the cookie `Secure` flag can be derived from its scheme instead of `SESSION_COOKIE_SECURE`.
 
 ## Ideas
 
 Not designed yet, kept so they are not forgotten.
 
+- [ ] **More notification channels and events**: success digest (daily or per run), Discord and Slack webhooks, per-site recipients. Each event is one more switch in the Notifications block of Settings.
 - [ ] **Per-site commit identity**: optional `Site.commitName` / `Site.commitEmail` overriding the global identity from Settings, for a client repo that must show the client's own author. Site form gets an "Override commit author" toggle; `lib/db.ts` merges site, then settings, then default when building the `GithubConfig`.
 - [ ] **Repo auto-creation** from the site form through the GitHub API (private repo, README).
 - [ ] **API tokens** for external triggers (webhooks, curl) without a browser session.

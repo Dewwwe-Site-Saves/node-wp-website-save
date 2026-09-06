@@ -5,6 +5,7 @@
 #   REPOSITE_SUBNET                 a free /29 for the stack network
 #   REPOSITE_PORT, PUID, PGID, TZ   optional, see the defaults below
 #   REPOSITE_TAG                    image tag: unset for :latest (releases), a branch name to try a pre-release build
+#   APP_URL                         optional, public URL of the instance for the links in notification mails
 # Updates are manual: Stack > Editor > Pull and redeploy. The image only moves on version tags (see .github/workflows/docker-build-push.yml).
 
 services:
@@ -22,6 +23,7 @@ services:
             - ENCRYPTION_KEY=${ENCRYPTION_KEY:?set ENCRYPTION_KEY in the stack environment}
             - SESSION_SECRET=${SESSION_SECRET:?set SESSION_SECRET in the stack environment}
             - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
+            - APP_URL=${APP_URL:-}
         volumes:
             - ${REPOSITE_DATA:?set REPOSITE_DATA to the host data directory}:/data
         networks:

@@ -4,8 +4,10 @@ import {
     cronSchema,
     domainSchema,
     parseId,
+    recipientsSchema,
     repoNameSchema,
     repoUrlSchema,
+    settingsSchema,
     siteCreateSchema,
     siteUpdateSchema,
     webRootPathSchema,
@@ -132,6 +134,51 @@ describe('siteCreateSchema', () => {
         expect(siteCreateSchema.safeParse({ ...validSite, port: 0 }).success).toBe(false);
         expect(siteCreateSchema.safeParse({ ...validSite, port: 70000 }).success).toBe(false);
         expect(siteCreateSchema.safeParse({ ...validSite, protocol: 'scp' }).success).toBe(false);
+    });
+});
+
+describe('recipientsSchema', () => {
+    it('normalises any separator to a comma-separated list, empty to null', () => {
+        expect(recipientsSchema.parse(' A@x.com; b@y.org  c@z.net,')).toBe(
+            'a@x.com, b@y.org, c@z.net',
+        );
+        expect(recipientsSchema.parse('')).toBeNull();
+        expect(recipientsSchema.parse(null)).toBeNull();
+        expect(recipientsSchema.parse(undefined)).toBeNull();
+    });
+
+    it('rejects a list with one bad address', () => {
+        expect(recipientsSchema.safeParse('a@x.com, nope').success).toBe(false);
+    });
+});
+
+describe('settingsSchema', () => {
+    const base = { defaultCron: '0 2 * * *', concurrency: 2, retentionDays: 90 };
+
+    it('refuses to enable notifications without host, sender and recipients', () => {
+        const result = settingsSchema.safeParse({ ...base, notifyOnError: true });
+        expect(result.success).toBe(false);
+        const paths = result.error?.issues.map((issue) => issue.path.join('.')).sort();
+        expect(paths).toEqual(['notifyTo', 'smtpFrom', 'smtpHost']);
+    });
+
+    it('accepts an incomplete SMTP block while notifications are off', () => {
+        const result = settingsSchema.parse({ ...base, smtpHost: 'smtp.example.com' });
+        expect(result).toMatchObject({
+            notifyOnError: false,
+            smtpHost: 'smtp.example.com',
+            smtpPort: 587,
+            smtpSecurity: 'starttls',
+            notifyTo: null,
+        });
+    });
+
+    it('treats an empty or masked password as "keep"', () => {
+        expect(settingsSchema.parse({ ...base, smtpPassword: '' }).smtpPassword).toBeUndefined();
+        expect(
+            settingsSchema.parse({ ...base, smtpPassword: '••••••' }).smtpPassword,
+        ).toBeUndefined();
+        expect(settingsSchema.parse({ ...base, smtpPassword: 'pw' }).smtpPassword).toBe('pw');
     });
 });
 
