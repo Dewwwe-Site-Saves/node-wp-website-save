@@ -1,8 +1,6 @@
 # Reposite
 
-Node.js app for backing up WordPress websites. Downloads files via FTP/SFTP, dumps the database, and pushes everything to a GitHub repository. Web UI to manage sites, run backups, follow logs and schedule everything.
-
-> v2 rewrite in progress on the `v2` branch — see [PLAN.md](./PLAN.md)
+Self-hosted backup manager for WordPress websites. Downloads files via FTP/SFTP, dumps the database, and pushes everything to a GitHub repository. Web UI to manage sites, run backups, follow logs and schedule everything.
 
 ## Usage
 
@@ -53,7 +51,7 @@ The app can update a date field in a SharePoint list after each backup.
 2. Under "API Permissions" add the application permission SharePoint/Sites.ReadWrite.All
 3. Generate a certificate:
 ```bash
-openssl req -x509 -newkey rsa:2048 -keyout keytmp.pem -out cert.pem -days 365 -passout pass:HereIsMySuperPass -subj '/C=FR/L=Lyon'
+openssl req -x509 -newkey rsa:2048 -keyout keytmp.pem -out cert.pem -days 365 -passout pass:HereIsMySuperPass -subj '/CN=reposite'
 openssl rsa -in keytmp.pem -out key.pem -passin pass:HereIsMySuperPass
 ```
 4. Upload `cert.pem` to the App Registration under "Certificates & secrets" and copy the thumbprint
@@ -79,6 +77,7 @@ The app runs the following steps for each site:
 ## Security
 
 - The web UI and API are behind a login: one admin account created at first run, session in a signed `httpOnly` cookie (7 days), no default credentials
+- Login attempts are throttled per address (5 failures, 15 minutes lockout)
 - Passwords and tokens are encrypted at rest (AES-256-GCM)
 - The PHP script (`backup-wp.php`) is protected by a unique token generated per run, only its hash is stored on the server
 - The token is deleted from the server as soon as it's validated
@@ -102,7 +101,7 @@ The "Full download" option clears the local tree and downloads every file again.
 
 Backups run through a queue with limited concurrency (configurable in Settings). Each site has its own log, stored with the run and streamed live in the UI. A site can't have two backups running at the same time. The History page filters by site and status; the site form has a "Test connection" button that lists the web root before saving.
 
-Every enabled site is scheduled with node-cron, on its own cron expression or the global default, in the `TZ` timezone. Old runs are pruned daily once past the retention period; the last 5 of each site are always kept.
+Every enabled site is scheduled with node-cron, on its own cron expression or the global default (the 1st and the 15th at 02:00 by default), in the `TZ` timezone. Old runs are pruned daily once past the retention period; the last 5 of each site are always kept.
 
 ## Error handling
 
@@ -116,11 +115,22 @@ Every enabled site is scheduled with node-cron, on its own cron expression or th
 
 If something goes wrong with a site, delete `$DATA_DIR/files/your-site` and re-run the backup. It will clone the repo and do a full download.
 
+To look at what the sync would do without touching the remote or the clone:
+
+```bash
+npx tsx scripts/smoke-sync.ts your-site.com   # scan + plan, read-only
+```
+
 ## Deploy (Docker)
 
-The image is built by GitHub Actions and published on GHCR as `ghcr.io/dewwwe-site-saves/reposite`: `staging` on every push to `main`, `latest` and `X.Y.Z` on version tags, `<branch>` when the workflow is run by hand. On the NAS it runs as a Portainer stack from [docker-compose.yml](./docker-compose.yml): Stacks, Add stack, Repository, compose path `docker-compose.yml`, branch `main`. Set `ENCRYPTION_KEY` and `SESSION_SECRET` in the stack's environment variables (`openssl rand -hex 32`), pick a host port and a free `/29` subnet in the compose, mount the data directory on `/data`.
+The image is built by GitHub Actions and published on GHCR as `ghcr.io/dewwwe-site-saves/reposite`: `staging` on every push to `main`, `latest` and `X.Y.Z` on version tags, `<branch>` when the workflow is run by hand. It runs as a Portainer stack from [docker-compose.yml](./docker-compose.yml): Stacks, Add stack, Repository, compose path `docker-compose.yml`, branch `main`. The stack's environment variables carry everything host-specific:
 
-The container runs as `PUID:PGID` (default `1000:1000`): the entrypoint makes the data directory theirs, applies the migrations and starts the server. Health is reported on `/api/health`. Updates are manual: Stack, Editor, Pull and redeploy.
+- `ENCRYPTION_KEY`, `SESSION_SECRET` — `openssl rand -hex 32` each
+- `REPOSITE_DATA` — host directory mounted on `/data`
+- `REPOSITE_SUBNET` — a free `/29` for the stack network
+- `REPOSITE_PORT` — host port (default `3000`), `PUID` / `PGID` (default `1000`), `TZ`, `REPOSITE_TAG` (default `latest`)
+
+The container runs as `PUID:PGID`: the entrypoint makes the data directory theirs, applies the migrations and starts the server. Health is reported on `/api/health`. Updates are manual: Stack, Editor, Pull and redeploy. Put the app behind an HTTPS reverse proxy (an SSO gateway in front of it works, the app keeps its own login).
 
 First run: open the app, create the admin on `/setup`, fill in Settings (commit author, GitHub token, SharePoint). To import the sites of a legacy `config.json`, copy it into the data volume, run the import in the container as the app user, then delete it (it holds cleartext passwords):
 
@@ -156,47 +166,4 @@ git push origin v2.0.0
 
 ## Roadmap
 
-### Done
-- [x] Tag repos with date of backup for easy roll back
-- [x] SFTP support
-- [x] Secure backup PHP script with token auth + auto-cleanup
-- [x] Incremental file download (only changed files)
-- [x] Parallel FTP scanning (5 connections)
-- [x] Parallel file download
-- [x] Multi-site parallel execution
-- [x] SQL dump validation before commit
-- [x] Automatic cleanup of leftover artifacts
-- [x] Resilient error handling (never crashes)
-- [x] Web app with UI (Next.js + shadcn/ui + SQLite)
-- [x] Real-time log streaming during backup (SSE)
-- [x] Project rename to Reposite
-
-### In progress (v2)
-- [x] Prisma data model + migrations
-- [x] Password encryption at rest (AES-256)
-- [x] Engine rewrite (TypeScript, no shell, GitHub token through the environment)
-- [x] GitHub releases created by the app
-- [x] Login + first-run setup
-- [x] Scheduled backups via node-cron (per-site cron schedule, global default in Settings)
-- [x] Settings page + test connection
-- [x] Docker deployment for Synology NAS (standalone Next.js image, PUID/PGID, Portainer stack)
-- [x] CI: typecheck and tests on every push, image published on GHCR, GitHub Release on version tag
-
-### Planned
-- [ ] Repo history retention (keep the last N releases, squash older snapshots)
-- [ ] Hack detection (suspicious files, PHP in uploads, modified core files, WP checksum verification)
-- [ ] Email notifications (SMTP, backup success/failure/hack alerts, daily digest)
-- [ ] Backup restoration via FTP/SFTP from the UI (files + DB, with rollback point)
-- [ ] Multi-user auth for the web UI
-
-### Ideas
-- [ ] Replace Git with Restic for storage (deduplication, encryption, retention policies)
-- [ ] Discord/Slack webhook notifications
-- [ ] WP-CLI support for sites with SSH access (`wp db export`)
-- [ ] Prestashop / Drupal support (CMS-specific dump scripts)
-- [ ] Diff viewer for changed files between backups
-- [ ] File explorer to browse and download files from a given backup
-- [ ] Structured logs (level + step filters, per-step timeline with durations)
-- [ ] Backup size tracking and storage alerts
-- [ ] Webhook triggers (start backup from external systems)
-- [ ] Backup integrity verification (checksum after download)
+What comes next, and the checks still pending on the production instance, live in [ROADMAP.md](./ROADMAP.md).

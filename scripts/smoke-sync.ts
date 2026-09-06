@@ -1,12 +1,9 @@
 /**
- * Exercises the v2 remote clients and sync planner against a real site, without writing
- * anything on the remote and, by default, nothing locally either.
+ * Debug helper: exercises the remote clients and the sync planner against a real site from the local database, without writing anything on the remote and, by default, nothing locally either.
  *
  *   npx tsx scripts/smoke-sync.ts <domain>                 list + plan against files/<repo> (read-only)
  *   npx tsx scripts/smoke-sync.ts <domain> --local <dir>   compare against another local tree
  *   npx tsx scripts/smoke-sync.ts <domain> --sync <dir>    real incremental sync into <dir> (downloads)
- *
- * Throwaway helper for the phase 2 rollout; goes away once the orchestrator is wired.
  */
 import path from 'node:path';
 import { parseArgs } from 'node:util';

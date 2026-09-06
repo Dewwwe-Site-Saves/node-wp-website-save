@@ -71,8 +71,8 @@ describe('createRelease', () => {
 
 describe('checkToken', () => {
     it('returns the login', async () => {
-        mockFetch(200, { login: 'louis' });
-        expect(await checkToken('tok')).toBe('louis');
+        mockFetch(200, { login: 'octocat' });
+        expect(await checkToken('tok')).toBe('octocat');
     });
 
     it('fails on an invalid token', async () => {

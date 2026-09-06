@@ -1,7 +1,11 @@
-# Reposite on the NAS: Portainer stack in Repository mode (compose path: docker-compose.yml, branch: main).
-# ENCRYPTION_KEY and SESSION_SECRET come from the stack's environment variables in Portainer (openssl rand -hex 32), never from a file in the repo.
+# Reposite as a Portainer stack in Repository mode (compose path: docker-compose.yml, branch: main).
+# Everything host-specific comes from the stack's environment variables, never from this file:
+#   ENCRYPTION_KEY, SESSION_SECRET  openssl rand -hex 32 each
+#   REPOSITE_DATA                   host directory mounted on /data (database, clones, certificate), writable by PUID:PGID
+#   REPOSITE_SUBNET                 a free /29 for the stack network
+#   REPOSITE_PORT, PUID, PGID, TZ   optional, see the defaults below
+#   REPOSITE_TAG                    image tag: unset for :latest (releases), a branch name to try a pre-release build
 # Updates are manual: Stack > Editor > Pull and redeploy. The image only moves on version tags (see .github/workflows/docker-build-push.yml).
-# REPOSITE_TAG selects the image tag: unset for :latest (releases), a branch name such as v2 to try a pre-release build.
 
 services:
     reposite:
@@ -9,18 +13,17 @@ services:
         container_name: Reposite-App
         restart: unless-stopped
         ports:
-            - '3000:3000' # TODO: pick a free host port
+            - '${REPOSITE_PORT:-3000}:3000'
         environment:
             - DATA_DIR=/data
             - TZ=${TZ:-Europe/Paris}
             - PUID=${PUID:-1000}
             - PGID=${PGID:-1000}
-            - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-            - SESSION_SECRET=${SESSION_SECRET}
+            - ENCRYPTION_KEY=${ENCRYPTION_KEY:?set ENCRYPTION_KEY in the stack environment}
+            - SESSION_SECRET=${SESSION_SECRET:?set SESSION_SECRET in the stack environment}
             - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
         volumes:
-            # Database, site clones and SharePoint certificate. Must be writable by PUID:PGID.
-            - /volume1/docker/reposite/data:/data
+            - ${REPOSITE_DATA:?set REPOSITE_DATA to the host data directory}:/data
         networks:
             - reposite-net
         healthcheck:
@@ -41,4 +44,4 @@ networks:
         driver: bridge
         ipam:
             config:
-                - subnet: 172.23.X.0/29 # TODO: pick a free /29 (see nas-infra references/networking.md)
+                - subnet: ${REPOSITE_SUBNET:?set REPOSITE_SUBNET to a free /29}
